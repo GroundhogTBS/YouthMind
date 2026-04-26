@@ -1,0 +1,164 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: youthmind-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root123}
+      MYSQL_DATABASE: youthmind
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/mysql/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: youthmind-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  core-service:
+    build:
+      context: ./backend/services/core-service
+      dockerfile: Dockerfile
+    container_name: youthmind-core-service
+    ports:
+      - "8001:8001"
+    environment:
+      - NODE_ENV=development
+      - PORT=8001
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USERNAME=root
+      - DB_PASSWORD=${DB_PASSWORD:-root123}
+      - DB_NAME=youthmind
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - JWT_EXPIRES_IN=7d
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./backend/services/core-service:/app
+      - /app/node_modules
+
+  chat-service:
+    build:
+      context: ./backend/services/chat-service
+      dockerfile: Dockerfile
+    container_name: youthmind-chat-service
+    ports:
+      - "8002:8002"
+    environment:
+      - NODE_ENV=development
+      - PORT=8002
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USERNAME=root
+      - DB_PASSWORD=${DB_PASSWORD:-root123}
+      - DB_NAME=youthmind
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AI_SERVICE_URL=http://ai-service:9001
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - ./backend/services/chat-service:/app
+      - /app/node_modules
+
+  alert-service:
+    build:
+      context: ./backend/services/alert-service
+      dockerfile: Dockerfile
+    container_name: youthmind-alert-service
+    ports:
+      - "8003:8003"
+    environment:
+      - NODE_ENV=development
+      - PORT=8003
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USERNAME=root
+      - DB_PASSWORD=${DB_PASSWORD:-root123}
+      - DB_NAME=youthmind
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AI_SERVICE_URL=http://ai-service:9002
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - ./backend/services/alert-service:/app
+      - /app/node_modules
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: youthmind-ai-service
+    ports:
+      - "9001:9001"
+      - "9002:9002"
+    environment:
+      - ENVIRONMENT=development
+      - ERNIE_API_KEY=${ERNIE_API_KEY}
+      - ERNIE_SECRET_KEY=${ERNIE_SECRET_KEY}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./ai-service:/app
+
+  nginx:
+    image: nginx:alpine
+    container_name: youthmind-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - core-service
+      - chat-service
+      - alert-service
+      - ai-service
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
