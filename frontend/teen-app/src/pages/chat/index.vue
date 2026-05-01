@@ -1,9 +1,11 @@
 <template>
   <view class="chat-page">
-    <view class="chat-sidebar">
+    <view class="sidebar-overlay" v-if="chatStore.sidebarVisible" @click="chatStore.hideSidebar"></view>
+    
+    <view class="chat-sidebar" :class="{ visible: chatStore.sidebarVisible }">
       <view class="sidebar-header">
         <text class="sidebar-title">对话记录</text>
-        <view class="new-chat-btn" @click="handleNewChat">
+        <view class="new-chat-btn" @click="handleNewChat" title="新建对话">
           <text>+ 新对话</text>
         </view>
       </view>
@@ -42,6 +44,9 @@
     <view class="chat-main">
       <view class="chat-header">
         <view class="header-left">
+          <view class="menu-btn" @click="chatStore.toggleSidebar" title="对话列表">
+            <text class="menu-icon">☰</text>
+          </view>
           <view class="back-btn" @click="handleGoBack">
             <text class="back-arrow">←</text>
           </view>
@@ -102,7 +107,7 @@
             </view>
           </view>
           
-          <view v-if="chatStore.isTyping" class="typing-indicator">
+          <view v-if="chatStore.isCurrentSessionTyping" class="typing-indicator">
             <view class="assistant-avatar">
               <text class="avatar-letter">AI</text>
             </view>
@@ -133,7 +138,7 @@
             @confirm="handleSend"
           />
         </view>
-        <view class="send-btn" :class="{ disabled: !canSend }" @click="handleSend">
+        <view class="send-btn" :class="{ disabled: !canSend }" @click="handleSend" title="发送消息">
           <text class="send-text">发送</text>
         </view>
       </view>
@@ -152,7 +157,7 @@ const navStore = useNavStore()
 
 const inputText = ref('')
 const scrollTop = ref(0)
-const editingId = ref<number | null>(null)
+const editingId = ref<string | null>(null)
 const editingTitle = ref('')
 const inputRef = ref<any>(null)
 
@@ -178,9 +183,10 @@ function handleGoBack() {
 
 async function handleNewChat() {
   await chatStore.createSession()
+  chatStore.hideSidebar()
 }
 
-function handleSelectSession(id: number) {
+function handleSelectSession(id: string) {
   chatStore.selectSession(id)
 }
 
@@ -197,7 +203,7 @@ function handleSaveTitle() {
   editingTitle.value = ''
 }
 
-function handleDeleteSession(id: number) {
+function handleDeleteSession(id: string) {
   chatStore.deleteSession(id)
 }
 
@@ -214,14 +220,6 @@ async function handleSend() {
 function handleQuickMessage(content: string) {
   inputText.value = content
   handleSend()
-}
-
-function focusInput() {
-  nextTick(() => {
-    if (inputRef.value) {
-      inputRef.value.focus()
-    }
-  })
 }
 
 function scrollToBottom() {
@@ -274,6 +272,17 @@ function handleCopy(content: string) {
   background: $bg-secondary;
   display: flex;
   flex-direction: row;
+  position: relative;
+}
+
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
 }
 
 .chat-sidebar {
@@ -305,6 +314,7 @@ function handleCopy(content: string) {
   padding: 8px 14px;
   background: $primary-color;
   border-radius: 8px;
+  @include btn-hover;
   
   text {
     font-size: 13px;
@@ -345,6 +355,7 @@ function handleCopy(content: string) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  @include clickable;
   
   &.active {
     background: rgba($primary-color, 0.1);
@@ -391,6 +402,7 @@ function handleCopy(content: string) {
   font-size: 11px;
   color: $primary-color;
   padding: 4px 8px;
+  @include clickable;
   
   &.delete {
     color: $error-color;
@@ -416,7 +428,24 @@ function handleCopy(content: string) {
 }
 
 .header-left, .header-right {
-  width: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-btn {
+  width: 36px;
+  height: 36px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: $bg-secondary;
+  border-radius: 8px;
+}
+
+.menu-icon {
+  font-size: 18px;
+  color: $text-primary;
 }
 
 .back-btn {
@@ -515,6 +544,13 @@ function handleCopy(content: string) {
   border: 1px solid $border-color;
   font-size: 13px;
   color: $text-secondary;
+  @include clickable;
+  
+  &:hover {
+    background: rgba($primary-color, 0.05);
+    border-color: $primary-color;
+    color: $primary-color;
+  }
 }
 
 .message-item {
@@ -539,6 +575,7 @@ function handleCopy(content: string) {
   border-radius: 16px 16px 4px 16px;
   font-size: 14px;
   line-height: 1.6;
+  @include clickable;
 }
 
 .message-content.assistant {
@@ -573,6 +610,7 @@ function handleCopy(content: string) {
   line-height: 1.6;
   color: $text-primary;
   border: 1px solid $border-light;
+  @include clickable;
 }
 
 .emotion-indicator {
@@ -666,6 +704,7 @@ function handleCopy(content: string) {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  @include btn-hover;
   
   &.disabled {
     opacity: 0.5;
@@ -679,8 +718,32 @@ function handleCopy(content: string) {
 }
 
 @media screen and (max-width: 768px) {
+  .sidebar-overlay {
+    display: block;
+    opacity: 0;
+    animation: fadeIn 0.3s ease forwards;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
   .chat-sidebar {
-    display: none;
+    position: fixed;
+    top: 0;
+    left: -260px;
+    z-index: 200;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateX(0);
+    
+    &.visible {
+      transform: translateX(260px);
+    }
+  }
+  
+  .menu-btn {
+    display: flex;
   }
 }
 </style>

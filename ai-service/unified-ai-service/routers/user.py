@@ -30,21 +30,24 @@ class UpdateProfileRequest(BaseModel):
     nickname: Optional[str] = None
     signature: Optional[str] = None
     age_group: Optional[str] = None
+    avatar: Optional[str] = None
 
 
 class UserResponse(BaseModel):
     id: str
     phone: str
     nickname: Optional[str]
+    avatar: Optional[str]
     signature: Optional[str]
     age_group: Optional[str]
+    user_type: Optional[str] = None
     created_at: str
 
 
 class UserStatsResponse(BaseModel):
     chat_days: int
     assessments: int
-    resources: int
+    emotion_records: int
 
 
 def create_token(user_id: str) -> str:
@@ -113,6 +116,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             "id": user.id,
             "phone": user.phone,
             "nickname": user.nickname,
+            "avatar": user.avatar,
             "signature": user.signature,
             "age_group": user.age_group,
             "created_at": user.created_at.isoformat()
@@ -126,8 +130,10 @@ async def get_me(user: UserModel = Depends(get_current_user)):
         id=user.id,
         phone=user.phone,
         nickname=user.nickname,
+        avatar=user.avatar,
         signature=user.signature,
         age_group=user.age_group,
+        user_type=getattr(user, 'user_type', None),
         created_at=user.created_at.isoformat()
     )
 
@@ -144,6 +150,8 @@ async def update_profile(
         user.signature = request.signature
     if request.age_group is not None:
         user.age_group = request.age_group
+    if request.avatar is not None:
+        user.avatar = request.avatar
     
     user.updated_at = datetime.now()
     db.commit()
@@ -153,6 +161,7 @@ async def update_profile(
         "user": {
             "id": user.id,
             "nickname": user.nickname,
+            "avatar": user.avatar,
             "signature": user.signature,
             "age_group": user.age_group
         }
@@ -164,10 +173,6 @@ async def get_user_stats(
     user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    chat_sessions = db.query(SessionModel).filter(
-        SessionModel.user_id == user.id
-    ).count()
-    
     unique_dates = db.query(func.date(MessageModel.created_at)).join(
         SessionModel, MessageModel.session_id == SessionModel.id
     ).filter(
@@ -178,10 +183,14 @@ async def get_user_stats(
         AssessmentModel.user_id == user.id
     ).count()
     
+    emotion_records = db.query(EmotionRecordModel).filter(
+        EmotionRecordModel.user_id == user.id
+    ).count()
+    
     return UserStatsResponse(
         chat_days=unique_dates,
         assessments=assessments,
-        resources=0
+        emotion_records=emotion_records
     )
 
 

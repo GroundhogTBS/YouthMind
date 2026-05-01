@@ -59,6 +59,13 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  function updateUserInfo(info: Partial<UserInfo>) {
+    if (userInfo.value) {
+      userInfo.value = { ...userInfo.value, ...info }
+      uni.setStorageSync('userInfo', JSON.stringify(userInfo.value))
+    }
+  }
+
   return {
     token,
     refreshToken,
@@ -66,6 +73,7 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn,
     setToken,
     setUserInfo,
+    updateUserInfo,
     logout,
     checkLogin
   }

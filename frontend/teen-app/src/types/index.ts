@@ -7,7 +7,7 @@ export interface Message {
 }
 
 export interface Session {
-  id: number
+  id: string
   title: string
   messages: Message[]
   messageCount: number

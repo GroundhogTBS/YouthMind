@@ -6,25 +6,25 @@
         <text class="logo-text">YouthMind</text>
       </view>
       <view class="sidebar-nav">
-        <view class="nav-item" :class="{ active: navStore.currentPage === 'home' }" @click="stayHome">
+        <view class="nav-item" :class="{ active: navStore.currentPage === 'home' }" @click="stayHome" title="首页">
           <view class="nav-icon">
             <text class="icon-text">H</text>
           </view>
           <text class="nav-text">首页</text>
         </view>
-        <view class="nav-item" :class="{ active: navStore.currentPage === 'chat' }" @click="goToChat">
+        <view class="nav-item" :class="{ active: navStore.currentPage === 'chat' }" @click="goToChat" title="AI对话">
           <view class="nav-icon">
             <text class="icon-text">C</text>
           </view>
           <text class="nav-text">AI对话</text>
         </view>
-        <view class="nav-item" :class="{ active: navStore.currentPage === 'assessment' }" @click="goToAssessment">
+        <view class="nav-item" :class="{ active: navStore.currentPage === 'assessment' }" @click="goToAssessment" title="心理测评">
           <view class="nav-icon">
             <text class="icon-text">A</text>
           </view>
           <text class="nav-text">心理测评</text>
         </view>
-        <view class="nav-item" :class="{ active: navStore.currentPage === 'resource' }" @click="goToResource">
+        <view class="nav-item" :class="{ active: navStore.currentPage === 'resource' }" @click="goToResource" title="学习资源">
           <view class="nav-icon">
             <text class="icon-text">R</text>
           </view>
@@ -32,7 +32,7 @@
         </view>
       </view>
       <view class="sidebar-footer">
-        <view class="user-info" @click="goToProfile">
+        <view class="user-info" @click="goToProfile" title="个人中心">
           <view class="user-avatar">
             <text class="avatar-text">{{ nickname.charAt(0) }}</text>
           </view>
@@ -47,14 +47,14 @@
           <text class="greeting-text">{{ greetingText }}，{{ nickname }}</text>
           <text class="greeting-sub">今天想聊点什么？</text>
         </view>
-        <view class="action-btn" @click="goToChat">
+        <view class="action-btn" @click="goToChat" title="开始AI对话">
           <text class="btn-text">开始对话</text>
         </view>
       </view>
       
       <view class="main-content">
         <view class="feature-grid">
-          <view class="feature-card" @click="goToChat">
+          <view class="feature-card" @click="goToChat" title="与AI心理助手对话">
             <view class="card-icon-wrapper purple">
               <text class="card-icon-letter">C</text>
             </view>
@@ -63,7 +63,7 @@
             <text class="card-action">开始对话</text>
           </view>
           
-          <view class="feature-card" @click="goToAssessment">
+          <view class="feature-card" @click="goToAssessment" title="进行心理测评">
             <view class="card-icon-wrapper pink">
               <text class="card-icon-letter">A</text>
             </view>
@@ -72,7 +72,7 @@
             <text class="card-action">开始测评</text>
           </view>
           
-          <view class="feature-card" @click="goToResource">
+          <view class="feature-card" @click="goToResource" title="浏览学习资源">
             <view class="card-icon-wrapper blue">
               <text class="card-icon-letter">R</text>
             </view>
@@ -81,7 +81,7 @@
             <text class="card-action">浏览资源</text>
           </view>
           
-          <view class="feature-card">
+          <view class="feature-card" @click="goToEmotion" title="记录今日心情">
             <view class="card-icon-wrapper yellow">
               <text class="card-icon-letter">M</text>
             </view>
@@ -180,8 +180,12 @@ function goToProfile() {
   uni.navigateTo({ url: '/pages/profile/index' })
 }
 
+function goToEmotion() {
+  uni.navigateTo({ url: '/pages/emotion/index' })
+}
+
 function selectMood(mood: string) {
-  uni.showToast({ title: '已记录心情', icon: 'success' })
+  uni.navigateTo({ url: `/pages/emotion/index?mood=${mood}` })
 }
 </script>
 
@@ -245,6 +249,7 @@ function selectMood(mood: string) {
   padding: 12px 16px;
   border-radius: 8px;
   margin-bottom: 4px;
+  @include clickable;
   
   &.active {
     background: rgba($primary-color, 0.1);
@@ -295,6 +300,7 @@ function selectMood(mood: string) {
   padding: 10px 16px;
   background: $bg-secondary;
   border-radius: 8px;
+  @include clickable;
 }
 
 .user-avatar {
@@ -348,6 +354,7 @@ function selectMood(mood: string) {
   background: $primary-color;
   padding: 10px 20px;
   border-radius: 8px;
+  @include btn-hover;
 }
 
 .btn-text {
@@ -373,6 +380,7 @@ function selectMood(mood: string) {
   border-radius: 12px;
   padding: 20px;
   border: 1px solid $border-light;
+  @include card-hover;
 }
 
 .card-icon-wrapper {
@@ -427,6 +435,12 @@ function selectMood(mood: string) {
   border-radius: 16px;
   font-size: 12px;
   color: $text-secondary;
+  @include clickable;
+  
+  &:hover {
+    background: rgba($primary-color, 0.1);
+    color: $primary-color;
+  }
 }
 
 .section {
@@ -449,6 +463,11 @@ function selectMood(mood: string) {
 .section-more {
   font-size: 13px;
   color: $text-muted;
+  @include clickable;
+  
+  &:hover {
+    color: $primary-color;
+  }
 }
 
 .article-grid {
@@ -464,6 +483,7 @@ function selectMood(mood: string) {
   border-radius: 10px;
   padding: 16px;
   border: 1px solid $border-light;
+  @include card-hover;
 }
 
 .article-tag {

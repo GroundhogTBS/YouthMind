@@ -92,15 +92,16 @@ async def get_recent_records(
     ]
 
 
-@router.get("/trend", response_model=List[EmotionTrendResponse], summary="获取情绪趋势")
+@router.get("/trend", summary="获取情绪趋势")
 async def get_emotion_trend(
     days: int = 7,
     user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    start_date = datetime.now() - timedelta(days=days)
-    
     from sqlalchemy import func
+    from collections import defaultdict
+    
+    start_date = datetime.now() - timedelta(days=days)
     
     results = db.query(
         EmotionRecordModel.emotion_type,
@@ -113,14 +114,53 @@ async def get_emotion_trend(
         EmotionRecordModel.emotion_type
     ).all()
     
-    return [
-        EmotionTrendResponse(
-            emotion_type=r.emotion_type,
-            count=r.count,
-            avg_intensity=round(r.avg_intensity, 1)
-        )
+    distribution = [
+        {
+            "emotion_type": r.emotion_type,
+            "count": r.count,
+            "avg_intensity": round(r.avg_intensity, 1)
+        }
         for r in results
     ]
+    
+    daily_results = db.query(
+        func.date(EmotionRecordModel.created_at).label('date'),
+        EmotionRecordModel.emotion_type,
+        func.count(EmotionRecordModel.id).label('count'),
+        func.avg(EmotionRecordModel.intensity).label('avg_intensity')
+    ).filter(
+        EmotionRecordModel.user_id == user.id,
+        EmotionRecordModel.created_at >= start_date
+    ).group_by(
+        func.date(EmotionRecordModel.created_at),
+        EmotionRecordModel.emotion_type
+    ).all()
+    
+    daily_trend = []
+    date_map = defaultdict(list)
+    for r in daily_results:
+        date_str = str(r.date) if r.date else ''
+        date_map[date_str].append({
+            "type": r.emotion_type,
+            "count": r.count,
+            "intensity": round(r.avg_intensity, 1)
+        })
+    
+    for i in range(days):
+        date = (datetime.now() - timedelta(days=days - 1 - i)).strftime('%Y-%m-%d')
+        emotions = date_map.get(date, [])
+        total_count = sum(e["count"] for e in emotions)
+        daily_trend.append({
+            "date": date,
+            "count": total_count,
+            "emotions": emotions
+        })
+    
+    return {
+        "period_days": days,
+        "distribution": distribution,
+        "daily_trend": daily_trend
+    }
 
 
 @router.get("/{record_id}", summary="获取单条情绪记录")

@@ -134,6 +134,19 @@ class Request {
       ...config
     })
   }
+
+  upload<T = any>(url: string, formData: FormData, config?: Partial<RequestConfig>): Promise<T> {
+    const header = config?.header || {}
+    delete header['Content-Type']
+
+    return this.request<T>({
+      url,
+      method: 'POST',
+      data: formData,
+      header,
+      ...config
+    })
+  }
 }
 
 export const request = new Request()
@@ -149,14 +162,12 @@ export const api = {
   chat: {
     createSession: () => request.post('/ai/chat/session'),
     getSessions: () => request.get('/ai/chat/sessions'),
-    getSession: (sessionId: string) => request.get(`/ai/chat/history/${sessionId}`),
-    getMessages: (sessionId: string, limit?: number) => 
-      request.get(`/ai/chat/history/${sessionId}`, limit ? { limit } : {}),
+    getHistory: (sessionId: string) => request.get(`/ai/chat/history/${sessionId}`),
     sendMessage: (sessionId: string, content: string) => 
       request.post('/ai/chat/send', { session_id: sessionId, content }),
     deleteSession: (sessionId: string) => 
       request.delete(`/ai/chat/session/${sessionId}`),
-    updateSessionTitle: (sessionId: string, title: string) => 
+    updateSession: (sessionId: string, title: string) => 
       request.put(`/ai/chat/session/${sessionId}`, { title }),
     getEmotionTrend: (sessionId: string) => 
       request.get(`/ai/chat/trend/${sessionId}`)
@@ -211,7 +222,7 @@ export const api = {
   user: {
     getProfile: () => 
       request.get('/ai/user/me'),
-    updateProfile: (data: { nickname?: string; signature?: string; age_group?: string }) => 
+    updateProfile: (data: { nickname?: string; signature?: string; age_group?: string; avatar?: string }) => 
       request.put('/ai/user/profile', data),
     getStats: () => 
       request.get('/ai/user/stats')
@@ -222,6 +233,43 @@ export const api = {
       request.post('/ai/crisis/detect', { text }),
     getResources: () => 
       request.get('/ai/crisis/resources')
+  },
+
+  admin: {
+    getDashboard: () => 
+      request.get('/ai/admin/dashboard'),
+    getStats: () => 
+      request.get('/ai/admin/stats'),
+    getUsers: (page?: number, pageSize?: number, search?: string) => 
+      request.get('/ai/admin/users', { ...(page && { page }), ...(pageSize && { page_size: pageSize }), ...(search && { search }) }),
+    getCrisisEvents: (status?: string, riskLevel?: string, page?: number, pageSize?: number) => 
+      request.get('/ai/admin/crisis-events', { ...(status && { status }), ...(riskLevel && { risk_level: riskLevel }), ...(page && { page }), ...(pageSize && { page_size: pageSize }) }),
+    handleCrisis: (eventId: number, notes?: string) => 
+      request.put(`/ai/admin/crisis-events/${eventId}/handle`, { notes }),
+    getOperationLogs: (userId?: string, action?: string, page?: number, pageSize?: number) => 
+      request.get('/ai/admin/operation-logs', { ...(userId && { user_id: userId }), ...(action && { action }), ...(page && { page }), ...(pageSize && { page_size: pageSize }) }),
+    getEmotionTrend: (days?: number) => 
+      request.get('/ai/admin/emotion-trend', days ? { days } : {}),
+    getAssessmentStats: (days?: number) => 
+      request.get('/ai/admin/assessment-stats', days ? { days } : {}),
+    exportUsers: () => 
+      request.get('/ai/admin/export/users')
+  },
+
+  upload: {
+    avatar: (file: File) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      return request.upload('/ai/upload/avatar', formData)
+    },
+    voice: (file: File, sessionId?: string) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      if (sessionId) formData.append('session_id', sessionId)
+      return request.upload('/ai/upload/voice', formData)
+    },
+    deleteFile: (fileId: number) => 
+      request.delete(`/ai/upload/${fileId}`)
   }
 }
 

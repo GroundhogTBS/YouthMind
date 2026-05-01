@@ -165,9 +165,7 @@ const currentQuestion = computed(() => {
 onMounted(() => {
   userStore.checkLogin()
   loadScales()
-  if (userStore.isLoggedIn) {
-    loadHistory()
-  }
+  loadHistory()
 })
 
 async function loadScales() {
@@ -180,11 +178,17 @@ async function loadScales() {
 }
 
 async function loadHistory() {
+  if (!userStore.isLoggedIn) {
+    history.value = []
+    return
+  }
   try {
-    const data = await api.assessment.getHistory(5)
-    history.value = data
+    const data = await api.assessment.getHistory(10)
+    history.value = data || []
+    console.log('测评历史加载成功:', data?.length || 0, '条记录')
   } catch (e) {
     console.error('加载历史失败', e)
+    history.value = []
   }
 }
 

@@ -14,12 +14,19 @@
 
     <scroll-view class="page-content" scroll-y :show-scrollbar="false">
       <view class="user-card">
-        <view class="avatar-wrapper">
-          <text class="avatar-letter">{{ userInfo.nickname ? userInfo.nickname.charAt(0).toUpperCase() : 'U' }}</text>
+        <view class="avatar-wrapper" @click="chooseAvatar">
+          <image v-if="avatarUrl" class="avatar-image" :src="avatarUrl" mode="aspectFill" />
+          <text v-else class="avatar-letter">{{ userInfo.nickname ? userInfo.nickname.charAt(0).toUpperCase() : 'U' }}</text>
+          <view class="avatar-edit-icon">
+            <text>+</text>
+          </view>
         </view>
         <view class="user-info">
           <text class="username">{{ userInfo.nickname || '用户' }}</text>
           <text class="user-desc">{{ userInfo.signature || '每天进步一点点' }}</text>
+        </view>
+        <view class="edit-btn" @click="showEditModal = true">
+          <text>编辑</text>
         </view>
       </view>
 
@@ -35,19 +42,12 @@
         </view>
         <view class="stat-divider"></view>
         <view class="stat-item">
-          <text class="stat-value">{{ stats.resources }}</text>
-          <text class="stat-label">学习资源</text>
+          <text class="stat-value">{{ stats.emotionRecords }}</text>
+          <text class="stat-label">情绪记录</text>
         </view>
       </view>
 
       <view class="menu-section">
-        <view class="menu-item" @click="handleMenuClick('profile')">
-          <view class="menu-icon-wrapper">
-            <text class="menu-icon-text">P</text>
-          </view>
-          <text class="menu-text">个人资料</text>
-          <text class="menu-arrow">›</text>
-        </view>
         <view class="menu-item" @click="handleMenuClick('history')">
           <view class="menu-icon-wrapper">
             <text class="menu-icon-text">H</text>
@@ -62,18 +62,18 @@
           <text class="menu-text">我的收藏</text>
           <text class="menu-arrow">›</text>
         </view>
-        <view class="menu-item" @click="handleMenuClick('feedback')">
+        <view class="menu-item" @click="handleMenuClick('emotions')">
           <view class="menu-icon-wrapper">
-            <text class="menu-icon-text">B</text>
+            <text class="menu-icon-text">E</text>
           </view>
-          <text class="menu-text">意见反馈</text>
+          <text class="menu-text">情绪趋势</text>
           <text class="menu-arrow">›</text>
         </view>
-        <view class="menu-item" @click="handleMenuClick('settings')">
-          <view class="menu-icon-wrapper">
-            <text class="menu-icon-text">S</text>
+        <view v-if="isAdmin" class="menu-item admin-item" @click="handleMenuClick('admin')">
+          <view class="menu-icon-wrapper admin-icon">
+            <text class="menu-icon-text">A</text>
           </view>
-          <text class="menu-text">设置</text>
+          <text class="menu-text">管理后台</text>
           <text class="menu-arrow">›</text>
         </view>
       </view>
@@ -96,37 +96,149 @@
         </view>
       </view>
     </scroll-view>
+
+    <view class="modal-overlay" v-if="showEditModal" @click="showEditModal = false">
+      <view class="modal-content" @click.stop>
+        <view class="modal-header">
+          <text class="modal-title">编辑资料</text>
+          <view class="modal-close" @click="showEditModal = false">
+            <text>×</text>
+          </view>
+        </view>
+        <view class="modal-body">
+          <view class="form-item">
+            <text class="form-label">昵称</text>
+            <input class="form-input" v-model="editForm.nickname" placeholder="请输入昵称" />
+          </view>
+          <view class="form-item">
+            <text class="form-label">个性签名</text>
+            <textarea class="form-textarea" v-model="editForm.signature" placeholder="写一句话介绍自己" />
+          </view>
+          <view class="form-item">
+            <text class="form-label">年龄段</text>
+            <picker :value="ageGroupIndex" :range="ageGroups" @change="onAgeGroupChange">
+              <view class="form-picker">
+                <text>{{ ageGroups[ageGroupIndex] }}</text>
+                <text class="picker-arrow">▼</text>
+              </view>
+            </picker>
+          </view>
+        </view>
+        <view class="modal-footer">
+          <view class="cancel-btn" @click="showEditModal = false">
+            <text>取消</text>
+          </view>
+          <view class="confirm-btn" @click="saveProfile">
+            <text>保存</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useNavStore } from '@/stores/nav'
 import { useUserStore } from '@/stores/user'
+import { api } from '@/api/request'
 
 const navStore = useNavStore()
 const userStore = useUserStore()
 
 const userInfo = ref({
   nickname: '',
-  signature: ''
+  signature: '',
+  age_group: ''
 })
 
 const stats = ref({
   chatDays: 0,
   assessments: 0,
-  resources: 0
+  emotionRecords: 0
 })
 
-onMounted(() => {
-  userStore.checkLogin()
-  if (userStore.userInfo) {
-    userInfo.value = {
-      nickname: userStore.userInfo.nickname || '',
-      signature: userStore.userInfo.signature || ''
-    }
-  }
+const isAdmin = ref(false)
+const showEditModal = ref(false)
+const ageGroups = ['未选择', '12岁以下', '12-15岁', '15-18岁', '18-25岁', '25岁以上']
+const ageGroupIndex = ref(0)
+const avatarUrl = ref('')
+
+const editForm = reactive({
+  nickname: '',
+  signature: '',
+  age_group: ''
 })
+
+onMounted(async () => {
+  userStore.checkLogin()
+  
+  if (!userStore.isLoggedIn) {
+    uni.redirectTo({ url: '/pages/auth/login' })
+    return
+  }
+  
+  await loadUserInfo()
+  await loadStats()
+})
+
+async function loadUserInfo() {
+  try {
+    const data = await api.user.getProfile()
+    userInfo.value = {
+      nickname: data.nickname || '',
+      signature: data.signature || '',
+      age_group: data.age_group || ''
+    }
+    editForm.nickname = data.nickname || ''
+    editForm.signature = data.signature || ''
+    editForm.age_group = data.age_group || ''
+    
+    const idx = ageGroups.indexOf(data.age_group || '未选择')
+    ageGroupIndex.value = idx >= 0 ? idx : 0
+    
+    isAdmin.value = data.phone === 'admin' || data.phone === '13800138000' || data.user_type === 'admin'
+    avatarUrl.value = data.avatar || ''
+  } catch (e) {
+    console.error('加载用户信息失败', e)
+  }
+}
+
+async function loadStats() {
+  try {
+    const data = await api.user.getStats()
+    stats.value = {
+      chatDays: data.chat_days || 0,
+      assessments: data.assessments || 0,
+      emotionRecords: data.emotion_records || 0
+    }
+  } catch (e) {
+    console.error('加载统计数据失败', e)
+  }
+}
+
+function onAgeGroupChange(e: any) {
+  ageGroupIndex.value = e.detail.value
+  editForm.age_group = ageGroups[ageGroupIndex.value]
+}
+
+async function saveProfile() {
+  try {
+    await api.user.updateProfile({
+      nickname: editForm.nickname,
+      signature: editForm.signature,
+      age_group: editForm.age_group
+    })
+    
+    userInfo.value = { ...editForm }
+    userStore.updateUserInfo(editForm)
+    
+    showEditModal.value = false
+    uni.showToast({ title: '保存成功', icon: 'success' })
+  } catch (e) {
+    uni.showToast({ title: '保存失败', icon: 'none' })
+  }
+}
 
 function handleGoBack() {
   navStore.resetToHome()
@@ -134,7 +246,15 @@ function handleGoBack() {
 }
 
 function handleMenuClick(page: string) {
-  uni.showToast({ title: '功能开发中', icon: 'none' })
+  if (page === 'history') {
+    uni.navigateTo({ url: '/pages/assessment/index' })
+  } else if (page === 'favorites') {
+    uni.navigateTo({ url: '/pages/resource/index?tab=favorites' })
+  } else if (page === 'emotions') {
+    uni.navigateTo({ url: '/pages/emotion/index' })
+  } else if (page === 'admin') {
+    uni.navigateTo({ url: '/pages/admin/index' })
+  }
 }
 
 function handleCallHotline() {
@@ -148,6 +268,48 @@ function handleLogout() {
     success: (res) => {
       if (res.confirm) {
         userStore.logout()
+      }
+    }
+  })
+}
+
+function chooseAvatar() {
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: async (res) => {
+      const tempFilePath = res.tempFilePaths[0]
+      try {
+        uni.showLoading({ title: '上传中...' })
+        const uploadRes = await new Promise<any>((resolve, reject) => {
+          uni.uploadFile({
+            url: (uni as any).apiBaseUrl + '/ai/upload/avatar',
+            filePath: tempFilePath,
+            name: 'file',
+            header: {
+              'Authorization': `Bearer ${userStore.token}`
+            },
+            success: (uploadRes) => {
+              try {
+                const data = JSON.parse(uploadRes.data)
+                resolve(data)
+              } catch (e) {
+                reject(e)
+              }
+            },
+            fail: reject
+          })
+        })
+        
+        avatarUrl.value = uploadRes.file_path
+        await api.user.updateProfile({ avatar: uploadRes.file_path })
+        uni.showToast({ title: '头像已更新', icon: 'success' })
+      } catch (e) {
+        console.error('上传头像失败', e)
+        uni.showToast({ title: '上传失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
       }
     }
   })
@@ -209,12 +371,38 @@ function handleLogout() {
   border: 2px solid rgba(255, 255, 255, 0.3);
   margin-right: $spacing-lg;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
 }
 
 .avatar-letter {
   font-size: 28px;
   font-weight: 700;
   color: #fff;
+}
+
+.avatar-edit-icon {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 20px;
+  height: 20px;
+  background: $primary-color;
+  border-radius: 50%;
+  @include flex-center;
+  border: 2px solid #fff;
+  
+  text {
+    font-size: 12px;
+    color: #fff;
+    line-height: 1;
+  }
 }
 
 .user-info {
@@ -232,6 +420,17 @@ function handleLogout() {
 .user-desc {
   font-size: $font-size-sm;
   color: rgba(255, 255, 255, 0.8);
+}
+
+.edit-btn {
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: $radius-md;
+  
+  text {
+    font-size: $font-size-sm;
+    color: #fff;
+  }
 }
 
 .stats-card {
@@ -312,6 +511,14 @@ function handleLogout() {
   color: $text-light;
 }
 
+.admin-item {
+  background: rgba($primary-color, 0.05);
+}
+
+.admin-icon {
+  background: rgba($primary-color, 0.15);
+}
+
 .help-section {
   margin: $spacing-lg;
 }
@@ -373,6 +580,151 @@ function handleLogout() {
   text {
     font-size: $font-size-base;
     color: $danger-color;
+  }
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  @include flex-center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  width: 85%;
+  max-width: 400px;
+  background: $bg-primary;
+  border-radius: $radius-xl;
+  overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from { 
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to { 
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: $spacing-lg;
+  border-bottom: 1px solid $border-light;
+}
+
+.modal-title {
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $text-primary;
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  @include flex-center;
+  
+  text {
+    font-size: 24px;
+    color: $text-muted;
+  }
+}
+
+.modal-body {
+  padding: $spacing-lg;
+}
+
+.form-item {
+  margin-bottom: $spacing-lg;
+}
+
+.form-label {
+  font-size: $font-size-sm;
+  color: $text-secondary;
+  margin-bottom: $spacing-sm;
+  display: block;
+}
+
+.form-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 $spacing-md;
+  background: $bg-secondary;
+  border-radius: $radius-md;
+  font-size: $font-size-base;
+  color: $text-primary;
+}
+
+.form-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: $spacing-md;
+  background: $bg-secondary;
+  border-radius: $radius-md;
+  font-size: $font-size-base;
+  color: $text-primary;
+}
+
+.form-picker {
+  width: 100%;
+  height: 44px;
+  padding: 0 $spacing-md;
+  background: $bg-secondary;
+  border-radius: $radius-md;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: $font-size-base;
+  color: $text-primary;
+}
+
+.picker-arrow {
+  font-size: 12px;
+  color: $text-muted;
+}
+
+.modal-footer {
+  display: flex;
+  padding: $spacing-lg;
+  gap: $spacing-md;
+  border-top: 1px solid $border-light;
+}
+
+.cancel-btn, .confirm-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: $radius-md;
+  @include flex-center;
+}
+
+.cancel-btn {
+  background: $bg-secondary;
+  
+  text {
+    color: $text-secondary;
+  }
+}
+
+.confirm-btn {
+  background: $primary-color;
+  
+  text {
+    color: #fff;
   }
 }
 </style>

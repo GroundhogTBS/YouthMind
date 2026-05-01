@@ -40,6 +40,13 @@
       "style": {
         "navigationBarTitleText": "登录"
       }
+    },
+    {
+      "path": "pages/admin/index",
+      "style": {
+        "navigationBarTitleText": "管理后台",
+        "navigationStyle": "custom"
+      }
     }
   ],
   "globalStyle": {

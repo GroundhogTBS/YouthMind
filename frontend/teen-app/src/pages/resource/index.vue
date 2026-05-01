@@ -7,92 +7,201 @@
         </view>
       </view>
       <view class="header-center">
-        <text class="header-title">学习资源</text>
-        <text class="header-subtitle">发现更多成长指南</text>
+        <text class="header-title">{{ isFavorites ? '我的收藏' : '学习资源' }}</text>
+        <text class="header-subtitle">{{ isFavorites ? '收藏的文章' : '发现更多成长指南' }}</text>
       </view>
       <view class="header-right"></view>
     </view>
 
-    <scroll-view class="page-content" scroll-y :show-scrollbar="false">
-      <view class="category-tabs">
+    <scroll-view class="page-content" scroll-y :show-scrollbar="false" @scrolltolower="loadMore">
+      <view class="category-tabs" v-if="!isFavorites">
         <view 
           v-for="(cat, index) in categories" 
-          :key="index"
+          :key="cat.key"
           class="category-tab"
           :class="{ active: activeCategory === index }"
-          @click="activeCategory = index"
+          @click="selectCategory(index)"
         >
           <text>{{ cat.name }}</text>
         </view>
       </view>
 
       <view class="resource-list">
+        <view v-if="loading && articles.length === 0" class="loading-state">
+          <text>加载中...</text>
+        </view>
+        
+        <view v-else-if="articles.length === 0" class="empty-state">
+          <text class="empty-text">{{ isFavorites ? '暂无收藏' : '暂无文章' }}</text>
+        </view>
+
         <view 
-          v-for="(item, index) in filteredResources" 
-          :key="index"
+          v-for="article in articles" 
+          :key="article.id"
           class="resource-item"
-          @click="handleOpenResource(item)"
+          @click="openArticle(article)"
         >
           <view class="resource-icon-wrapper">
-            <text class="resource-icon">{{ item.icon }}</text>
+            <text class="resource-icon">{{ getCategoryIcon(article.category) }}</text>
           </view>
           <view class="resource-info">
-            <text class="resource-title">{{ item.title }}</text>
-            <text class="resource-desc">{{ item.description }}</text>
+            <text class="resource-title">{{ article.title }}</text>
+            <text class="resource-desc">{{ article.summary }}</text>
             <view class="resource-meta">
-              <text class="resource-category">{{ item.categoryName }}</text>
-              <text class="resource-views">{{ item.views }}人已学习</text>
+              <text class="resource-category">{{ getCategoryName(article.category) }}</text>
+              <text class="resource-views">{{ article.viewCount }}人已学习</text>
             </view>
           </view>
           <text class="resource-arrow">›</text>
         </view>
       </view>
     </scroll-view>
+
+    <view class="article-modal" v-if="showArticleModal" @click="closeArticle">
+      <view class="article-content" @click.stop>
+        <view class="article-header">
+          <view class="article-close" @click="closeArticle">
+            <text>×</text>
+          </view>
+          <text class="article-category-tag">{{ getCategoryName(currentArticle?.category || '') }}</text>
+          <text class="article-title-lg">{{ currentArticle?.title }}</text>
+        </view>
+        <scroll-view class="article-body" scroll-y>
+          <rich-text :nodes="formatContent(currentArticle?.content || '')"></rich-text>
+        </scroll-view>
+        <view class="article-footer">
+          <view class="action-btn" :class="{ favorited: currentArticle?.isFavorited }" @click="toggleFavorite">
+            <text>{{ currentArticle?.isFavorited ? '已收藏' : '收藏' }}</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useNavStore } from '@/stores/nav'
+import { useUserStore } from '@/stores/user'
+import { api } from '@/api/request'
 
 const navStore = useNavStore()
+const userStore = useUserStore()
 
+const isFavorites = ref(false)
 const activeCategory = ref(0)
+const articles = ref<any[]>([])
+const loading = ref(false)
+const showArticleModal = ref(false)
+const currentArticle = ref<any>(null)
 
-const categories = [
-  { name: '全部', id: 'all' },
-  { name: '情绪管理', id: 'emotion' },
-  { name: '学习压力', id: 'study' },
-  { name: '人际关系', id: 'social' },
-  { name: '自我成长', id: 'growth' }
-]
-
-const resources = ref([
-  { icon: 'S', title: '如何应对考试焦虑', description: '考试前的紧张是正常的，学会这些方法让你更从容', category: 'study', categoryName: '学习压力', views: 1234 },
-  { icon: 'R', title: '和朋友吵架了怎么办', description: '友谊中的冲突可以这样化解，让关系更牢固', category: 'social', categoryName: '人际关系', views: 892 },
-  { icon: 'G', title: '提升自信心的10个方法', description: '相信自己，你比想象中更优秀', category: 'growth', categoryName: '自我成长', views: 1567 },
-  { icon: 'E', title: '学会放松：深呼吸练习', description: '简单的呼吸技巧，帮你缓解紧张情绪', category: 'emotion', categoryName: '情绪管理', views: 2341 },
-  { icon: 'Z', title: '如何改善睡眠质量', description: '好的睡眠是心理健康的基础', category: 'emotion', categoryName: '情绪管理', views: 1876 },
-  { icon: 'C', title: '如何与父母有效沟通', description: '学会表达自己的想法，建立更好的亲子关系', category: 'social', categoryName: '人际关系', views: 1456 },
-  { icon: 'T', title: '时间管理小技巧', description: '合理安排时间，让学习和生活更轻松', category: 'study', categoryName: '学习压力', views: 987 },
-  { icon: 'M', title: '正念冥想入门指南', description: '每天10分钟，让心灵更平静', category: 'emotion', categoryName: '情绪管理', views: 2134 },
-  { icon: 'K', title: '认识自己的情绪', description: '了解情绪，才能更好地管理情绪', category: 'emotion', categoryName: '情绪管理', views: 1678 },
-  { icon: 'A', title: '设定目标的小技巧', description: '学会设定可实现的目标，让成长更有方向', category: 'growth', categoryName: '自我成长', views: 1123 }
+const categories = ref([
+  { key: 'all', name: '全部' },
+  { key: 'emotion', name: '情绪管理' },
+  { key: 'stress', name: '压力调节' },
+  { key: 'relationship', name: '人际关系' },
+  { key: 'study', name: '学习心理' },
+  { key: 'growth', name: '自我成长' }
 ])
 
-const filteredResources = computed(() => {
-  if (activeCategory.value === 0) return resources.value
-  const categoryId = categories[activeCategory.value].id
-  return resources.value.filter(r => r.category === categoryId)
+onMounted(() => {
+  const pages = getCurrentPages()
+  const currentPage = pages[pages.length - 1] as any
+  if (currentPage?.options?.tab === 'favorites') {
+    isFavorites.value = true
+  }
+  
+  loadArticles()
 })
+
+async function loadArticles() {
+  if (loading.value) return
+  loading.value = true
+  
+  try {
+    let data
+    if (isFavorites.value) {
+      data = await api.article.getFavorites()
+    } else {
+      const category = activeCategory.value === 0 ? undefined : categories.value[activeCategory.value].key
+      data = await api.article.getList(category)
+    }
+    articles.value = data
+  } catch (e) {
+    console.error('加载文章失败', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadMore() {
+}
+
+function selectCategory(index: number) {
+  activeCategory.value = index
+  loadArticles()
+}
+
+async function openArticle(article: any) {
+  try {
+    const data = await api.article.getById(article.id)
+    currentArticle.value = data
+    showArticleModal.value = true
+  } catch (e) {
+    uni.showToast({ title: '加载失败', icon: 'none' })
+  }
+}
+
+function closeArticle() {
+  showArticleModal.value = false
+  currentArticle.value = null
+}
+
+async function toggleFavorite() {
+  if (!currentArticle.value) return
+  
+  try {
+    if (currentArticle.value.isFavorited) {
+      await api.article.unfavorite(currentArticle.value.id)
+      currentArticle.value.isFavorited = false
+      uni.showToast({ title: '已取消收藏', icon: 'success' })
+    } else {
+      await api.article.favorite(currentArticle.value.id)
+      currentArticle.value.isFavorited = true
+      uni.showToast({ title: '收藏成功', icon: 'success' })
+    }
+  } catch (e) {
+    uni.showToast({ title: '操作失败', icon: 'none' })
+  }
+}
+
+function getCategoryName(key: string): string {
+  const cat = categories.value.find(c => c.key === key)
+  return cat?.name || key
+}
+
+function getCategoryIcon(key: string): string {
+  const icons: Record<string, string> = {
+    emotion: 'E',
+    stress: 'S',
+    relationship: 'R',
+    study: 'T',
+    growth: 'G'
+  }
+  return icons[key] || 'A'
+}
+
+function formatContent(content: string): string {
+  return content
+    .replace(/\n/g, '<br/>')
+    .replace(/##\s*(.+)/g, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\d+\.\s+/g, '<br/><strong>$&</strong>')
+}
 
 function handleGoBack() {
   navStore.resetToHome()
   uni.navigateBack()
-}
-
-function handleOpenResource(item: any) {
-  uni.showToast({ title: '资源详情开发中', icon: 'none' })
 }
 </script>
 
@@ -168,6 +277,16 @@ function handleOpenResource(item: any) {
   padding: $spacing-lg;
 }
 
+.loading-state, .empty-state {
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-text {
+  font-size: $font-size-base;
+  color: $text-muted;
+}
+
 .resource-item {
   @include card-base;
   padding: $spacing-lg;
@@ -210,6 +329,9 @@ function handleOpenResource(item: any) {
   display: block;
   margin-bottom: $spacing-sm;
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .resource-meta {
@@ -234,5 +356,111 @@ function handleOpenResource(item: any) {
   font-size: $font-size-lg;
   color: $text-light;
   margin-left: $spacing-sm;
+}
+
+.article-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  @include flex-center;
+}
+
+.article-content {
+  width: 90%;
+  max-width: 600px;
+  max-height: 85vh;
+  background: $bg-primary;
+  border-radius: $radius-xl;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.article-header {
+  padding: $spacing-lg;
+  border-bottom: 1px solid $border-light;
+  position: relative;
+}
+
+.article-close {
+  position: absolute;
+  top: $spacing-md;
+  right: $spacing-md;
+  width: 32px;
+  height: 32px;
+  @include flex-center;
+  
+  text {
+    font-size: 24px;
+    color: $text-muted;
+  }
+}
+
+.article-category-tag {
+  font-size: $font-size-xs;
+  color: $primary-color;
+  background: rgba($primary-color, 0.1);
+  padding: 4px $spacing-md;
+  border-radius: $radius-sm;
+  display: inline-block;
+  margin-bottom: $spacing-sm;
+}
+
+.article-title-lg {
+  font-size: $font-size-xl;
+  font-weight: 600;
+  color: $text-primary;
+  display: block;
+  padding-right: 40px;
+}
+
+.article-body {
+  flex: 1;
+  padding: $spacing-lg;
+  font-size: $font-size-base;
+  color: $text-primary;
+  line-height: 1.8;
+  
+  h3 {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    margin: $spacing-lg 0 $spacing-md;
+    color: $text-primary;
+  }
+  
+  strong {
+    font-weight: 600;
+    color: $text-primary;
+  }
+}
+
+.article-footer {
+  padding: $spacing-lg;
+  border-top: 1px solid $border-light;
+  display: flex;
+  justify-content: center;
+}
+
+.action-btn {
+  padding: $spacing-md $spacing-2xl;
+  background: $bg-secondary;
+  border-radius: $radius-full;
+  
+  text {
+    font-size: $font-size-base;
+    color: $text-secondary;
+  }
+  
+  &.favorited {
+    background: rgba($primary-color, 0.1);
+    
+    text {
+      color: $primary-color;
+    }
+  }
 }
 </style>

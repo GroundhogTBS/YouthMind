@@ -15,6 +15,7 @@ from services.sensitive_filter import sensitive_filter
 from models.database import (
     get_db, init_db, SessionModel, MessageModel, CrisisEventModel
 )
+from routers.user import get_current_user, UserModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -72,7 +73,11 @@ class SessionResponse(BaseModel):
 
 
 @router.post("/send", response_model=ChatResponse, summary="发送消息")
-async def send_message(request: SendRequest, db: Session = Depends(get_db)):
+async def send_message(
+    request: SendRequest, 
+    user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     try:
         has_sensitive, warning_msg, found_words = sensitive_filter.check_user_input(request.content)
         
@@ -86,12 +91,29 @@ async def send_message(request: SendRequest, db: Session = Depends(get_db)):
                 source="filter"
             )
         
+        session = db.query(SessionModel).filter(
+            SessionModel.id == request.session_id,
+            SessionModel.user_id == user.id
+        ).first()
+        
+        if not session:
+            session = SessionModel(
+                id=request.session_id,
+                user_id=user.id,
+                title="新对话",
+                message_count=0,
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+            db.add(session)
+            db.commit()
+        
         history = get_messages_from_db(db, request.session_id)
         
         result = await chat_generator.generate(
             message=request.content,
             history=history,
-            user_info=request.user_info
+            user_info={"age_group": user.age_group} if user.age_group else None
         )
         
         filtered_content, _ = sensitive_filter.filter(result["content"])
@@ -109,7 +131,7 @@ async def send_message(request: SendRequest, db: Session = Depends(get_db)):
         update_session(db, request.session_id, request.content)
         
         if result.get("crisis") and result["crisis"].get("should_alert"):
-            save_crisis_event(db, request.session_id, result["crisis"])
+            save_crisis_event(db, request.session_id, result["crisis"], user.id)
         
         return ChatResponse(**result)
         
@@ -164,13 +186,18 @@ async def stream_response(request: ChatRequest):
 
 
 @router.post("/session", response_model=SessionResponse, summary="创建会话")
-async def create_session(request: SessionCreate = SessionCreate(), db: Session = Depends(get_db)):
+async def create_session(
+    request: SessionCreate = SessionCreate(), 
+    user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     session_id = str(uuid.uuid4())
     now = datetime.now()
     
     session = SessionModel(
         id=session_id,
         title=request.title,
+        user_id=user.id,
         message_count=0,
         created_at=now,
         updated_at=now
@@ -188,8 +215,13 @@ async def create_session(request: SessionCreate = SessionCreate(), db: Session =
 
 
 @router.get("/sessions", response_model=List[SessionResponse], summary="获取会话列表")
-async def get_sessions(db: Session = Depends(get_db)):
-    sessions = db.query(SessionModel).order_by(SessionModel.updated_at.desc()).all()
+async def get_sessions(
+    user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    sessions = db.query(SessionModel).filter(
+        SessionModel.user_id == user.id
+    ).order_by(SessionModel.updated_at.desc()).all()
     
     return [
         SessionResponse(
@@ -204,8 +236,15 @@ async def get_sessions(db: Session = Depends(get_db)):
 
 
 @router.get("/history/{session_id}", summary="获取历史消息")
-async def get_history(session_id: str, db: Session = Depends(get_db)):
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+async def get_history(
+    session_id: str, 
+    user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    session = db.query(SessionModel).filter(
+        SessionModel.id == session_id,
+        SessionModel.user_id == user.id
+    ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -234,8 +273,16 @@ async def get_history(session_id: str, db: Session = Depends(get_db)):
 
 
 @router.put("/session/{session_id}")
-async def update_session_title(session_id: str, request: SessionUpdate, db: Session = Depends(get_db)):
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+async def update_session_title(
+    session_id: str, 
+    request: SessionUpdate, 
+    user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    session = db.query(SessionModel).filter(
+        SessionModel.id == session_id,
+        SessionModel.user_id == user.id
+    ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -247,8 +294,15 @@ async def update_session_title(session_id: str, request: SessionUpdate, db: Sess
 
 
 @router.delete("/session/{session_id}")
-async def delete_session(session_id: str, db: Session = Depends(get_db)):
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+async def delete_session(
+    session_id: str, 
+    user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    session = db.query(SessionModel).filter(
+        SessionModel.id == session_id,
+        SessionModel.user_id == user.id
+    ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -375,9 +429,10 @@ def update_session(db: Session, session_id: str, first_message: str):
         db.commit()
 
 
-def save_crisis_event(db: Session, session_id: str, crisis_data: Dict):
+def save_crisis_event(db: Session, session_id: str, crisis_data: Dict, user_id: str = None):
     event = CrisisEventModel(
         session_id=session_id,
+        user_id=user_id,
         risk_level=crisis_data.get("risk_level"),
         risk_score=crisis_data.get("risk_score"),
         matched_keywords=json.dumps(crisis_data.get("matched_keywords", []))

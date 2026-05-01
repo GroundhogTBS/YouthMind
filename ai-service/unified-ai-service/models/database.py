@@ -112,6 +112,33 @@ class UserFavoriteModel(Base):
     created_at = Column(DateTime, default=datetime.now)
 
 
+class OperationLogModel(Base):
+    __tablename__ = 'operation_logs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, index=True)
+    action = Column(String)
+    resource_type = Column(String)
+    resource_id = Column(String, nullable=True)
+    details = Column(Text, nullable=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+
+class FileUploadModel(Base):
+    __tablename__ = 'file_uploads'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, index=True)
+    file_type = Column(String)
+    file_name = Column(String)
+    file_path = Column(String)
+    file_size = Column(Integer)
+    mime_type = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+
 def init_db():
     Base.metadata.create_all(engine)
 

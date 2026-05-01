@@ -11,11 +11,13 @@
     <view class="form-section">
       <view class="input-group">
         <input 
+          ref="phoneInput"
           v-model="phone"
           class="input"
           type="number"
           placeholder="请输入手机号"
           maxlength="11"
+          :focus="true"
         />
       </view>
 
