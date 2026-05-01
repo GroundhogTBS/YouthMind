@@ -95,7 +95,7 @@
       </view>
 
       <view v-if="activeTab === 'trend'" class="tab-content">
-        <view class="section">
+        <view class="section" v-if="emotionDistribution.length > 0">
           <text class="section-title">情绪分布</text>
           <view class="emotion-chart">
             <view v-for="(item, index) in emotionDistribution" :key="index" class="chart-bar-item">
@@ -108,7 +108,7 @@
           </view>
         </view>
 
-        <view class="section">
+        <view class="section" v-if="trendData.length > 0">
           <text class="section-title">近7天记录</text>
           <view class="trend-chart">
             <view v-for="item in trendData" :key="item.date" class="trend-item">
@@ -126,7 +126,7 @@
           </view>
         </view>
 
-        <view class="section">
+        <view class="section" v-if="recentRecords.length > 0">
           <text class="section-title">最近记录</text>
           <view class="history-list">
             <view 
@@ -145,6 +145,11 @@
               <text class="history-trigger" v-if="record.triggers">{{ record.triggers }}</text>
             </view>
           </view>
+        </view>
+
+        <view class="section empty-section" v-if="emotionDistribution.length === 0 && recentRecords.length === 0">
+          <text class="empty-text">暂无情绪记录</text>
+          <text class="empty-hint">开始记录你的情绪吧！</text>
         </view>
       </view>
     </scroll-view>
@@ -205,6 +210,7 @@ onMounted(() => {
 
 const selectEmotion = (type: string) => {
   selectedEmotion.value = type;
+  uni.vibrateShort({ type: 'light' });
 };
 
 const onIntensityChange = (e: any) => {
@@ -396,12 +402,18 @@ function handleGoBack() {
   background: $bg-secondary;
   border-radius: $radius-lg;
   border: 2px solid transparent;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  
+  &:active {
+    transform: scale(0.95);
+  }
 }
 
 .emotion-item.active {
   border-color: $primary-color;
-  background: rgba($primary-color, 0.1);
+  background: rgba($primary-color, 0.15);
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba($primary-color, 0.2);
 }
 
 .emotion-icon-wrapper {
@@ -608,5 +620,22 @@ function handleGoBack() {
   font-size: $font-size-sm;
   color: $text-secondary;
   display: block;
+}
+
+.empty-section {
+  @include flex-column;
+  align-items: center;
+  padding: 40px 20px;
+}
+
+.empty-text {
+  font-size: $font-size-base;
+  color: $text-muted;
+  margin-bottom: $spacing-sm;
+}
+
+.empty-hint {
+  font-size: $font-size-sm;
+  color: $primary-color;
 }
 </style>

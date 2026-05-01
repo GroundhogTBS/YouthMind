@@ -139,6 +139,20 @@ class FileUploadModel(Base):
     created_at = Column(DateTime, default=datetime.now)
 
 
+class DiaryModel(Base):
+    __tablename__ = 'diaries'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, index=True)
+    title = Column(String, nullable=True)
+    content = Column(Text)
+    mood = Column(String, nullable=True)
+    weather = Column(String, nullable=True)
+    is_private = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 def init_db():
     Base.metadata.create_all(engine)
 

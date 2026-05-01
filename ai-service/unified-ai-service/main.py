@@ -8,7 +8,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from routers import emotion, chat, crisis, user, emotion_record, assessment, article, admin, upload
+from routers import emotion, chat, crisis, user, emotion_record, assessment, article, admin, upload, diary
 from core.middleware import RateLimitMiddleware, SecurityHeadersMiddleware, RequestLoggingMiddleware
 
 logging.basicConfig(
@@ -51,6 +51,7 @@ app.include_router(assessment.router, prefix="/ai/assessment", tags=["心理测�
 app.include_router(article.router, prefix="/ai/articles", tags=["内容服务"])
 app.include_router(admin.router, prefix="/ai/admin", tags=["管理后台"])
 app.include_router(upload.router, prefix="/ai/upload", tags=["文件上传"])
+app.include_router(diary.router, prefix="/ai/diary", tags=["日记"])
 
 
 @app.get("/")

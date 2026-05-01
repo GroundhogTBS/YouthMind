@@ -270,6 +270,21 @@ export const api = {
     },
     deleteFile: (fileId: number) => 
       request.delete(`/ai/upload/${fileId}`)
+  },
+
+  diary: {
+    create: (data: { title?: string; content: string; mood?: string; weather?: string }) => 
+      request.post('/ai/diary', data),
+    getList: (limit?: number, offset?: number) => 
+      request.get('/ai/diary', { ...(limit && { limit }), ...(offset && { offset }) }),
+    getById: (id: number) => 
+      request.get(`/ai/diary/${id}`),
+    update: (id: number, data: { title?: string; content?: string; mood?: string; weather?: string }) => 
+      request.put(`/ai/diary/${id}`, data),
+    delete: (id: number) => 
+      request.delete(`/ai/diary/${id}`),
+    getStats: (days?: number) => 
+      request.get('/ai/diary/stats/summary', days ? { days } : {})
   }
 }
 

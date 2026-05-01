@@ -48,6 +48,13 @@
       </view>
 
       <view class="menu-section">
+        <view class="menu-item" @click="handleMenuClick('diary')">
+          <view class="menu-icon-wrapper diary-icon">
+            <text class="menu-icon-text">D</text>
+          </view>
+          <text class="menu-text">我的日记</text>
+          <text class="menu-arrow">›</text>
+        </view>
         <view class="menu-item" @click="handleMenuClick('history')">
           <view class="menu-icon-wrapper">
             <text class="menu-icon-text">H</text>
@@ -106,6 +113,16 @@
           </view>
         </view>
         <view class="modal-body">
+          <view class="form-item avatar-edit-item">
+            <text class="form-label">头像</text>
+            <view class="avatar-edit-wrapper" @click="chooseAvatarInModal">
+              <image v-if="editForm.avatar" class="avatar-edit-image" :src="editForm.avatar" mode="aspectFill" />
+              <view v-else class="avatar-edit-placeholder">
+                <text>{{ editForm.nickname ? editForm.nickname.charAt(0).toUpperCase() : 'U' }}</text>
+              </view>
+              <text class="avatar-edit-hint">点击更换</text>
+            </view>
+          </view>
           <view class="form-item">
             <text class="form-label">昵称</text>
             <input class="form-input" v-model="editForm.nickname" placeholder="请输入昵称" />
@@ -116,7 +133,7 @@
           </view>
           <view class="form-item">
             <text class="form-label">年龄段</text>
-            <picker :value="ageGroupIndex" :range="ageGroups" @change="onAgeGroupChange">
+            <picker mode="selector" :value="ageGroupIndex" :range="ageGroups" @change="onAgeGroupChange">
               <view class="form-picker">
                 <text>{{ ageGroups[ageGroupIndex] }}</text>
                 <text class="picker-arrow">▼</text>
@@ -167,7 +184,8 @@ const avatarUrl = ref('')
 const editForm = reactive({
   nickname: '',
   signature: '',
-  age_group: ''
+  age_group: '',
+  avatar: ''
 })
 
 onMounted(async () => {
@@ -193,6 +211,7 @@ async function loadUserInfo() {
     editForm.nickname = data.nickname || ''
     editForm.signature = data.signature || ''
     editForm.age_group = data.age_group || ''
+    editForm.avatar = data.avatar || ''
     
     const idx = ageGroups.indexOf(data.age_group || '未选择')
     ageGroupIndex.value = idx >= 0 ? idx : 0
@@ -201,6 +220,7 @@ async function loadUserInfo() {
     avatarUrl.value = data.avatar || ''
   } catch (e) {
     console.error('加载用户信息失败', e)
+    uni.showToast({ title: '网络错误，请检查连接', icon: 'none' })
   }
 }
 
@@ -227,10 +247,16 @@ async function saveProfile() {
     await api.user.updateProfile({
       nickname: editForm.nickname,
       signature: editForm.signature,
-      age_group: editForm.age_group
+      age_group: editForm.age_group,
+      avatar: editForm.avatar
     })
     
-    userInfo.value = { ...editForm }
+    userInfo.value = { 
+      nickname: editForm.nickname,
+      signature: editForm.signature,
+      age_group: editForm.age_group
+    }
+    avatarUrl.value = editForm.avatar
     userStore.updateUserInfo(editForm)
     
     showEditModal.value = false
@@ -246,7 +272,9 @@ function handleGoBack() {
 }
 
 function handleMenuClick(page: string) {
-  if (page === 'history') {
+  if (page === 'diary') {
+    uni.navigateTo({ url: '/pages/diary/index' })
+  } else if (page === 'history') {
     uni.navigateTo({ url: '/pages/assessment/index' })
   } else if (page === 'favorites') {
     uni.navigateTo({ url: '/pages/resource/index?tab=favorites' })
@@ -282,26 +310,7 @@ function chooseAvatar() {
       const tempFilePath = res.tempFilePaths[0]
       try {
         uni.showLoading({ title: '上传中...' })
-        const uploadRes = await new Promise<any>((resolve, reject) => {
-          uni.uploadFile({
-            url: (uni as any).apiBaseUrl + '/ai/upload/avatar',
-            filePath: tempFilePath,
-            name: 'file',
-            header: {
-              'Authorization': `Bearer ${userStore.token}`
-            },
-            success: (uploadRes) => {
-              try {
-                const data = JSON.parse(uploadRes.data)
-                resolve(data)
-              } catch (e) {
-                reject(e)
-              }
-            },
-            fail: reject
-          })
-        })
-        
+        const uploadRes = await uploadAvatarFile(tempFilePath)
         avatarUrl.value = uploadRes.file_path
         await api.user.updateProfile({ avatar: uploadRes.file_path })
         uni.showToast({ title: '头像已更新', icon: 'success' })
@@ -312,6 +321,50 @@ function chooseAvatar() {
         uni.hideLoading()
       }
     }
+  })
+}
+
+function chooseAvatarInModal() {
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: async (res) => {
+      const tempFilePath = res.tempFilePaths[0]
+      try {
+        uni.showLoading({ title: '上传中...' })
+        const uploadRes = await uploadAvatarFile(tempFilePath)
+        editForm.avatar = uploadRes.file_path
+        uni.showToast({ title: '头像已上传，请保存', icon: 'none' })
+      } catch (e) {
+        console.error('上传头像失败', e)
+        uni.showToast({ title: '上传失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    }
+  })
+}
+
+async function uploadAvatarFile(filePath: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    uni.uploadFile({
+      url: 'http://localhost:9000/ai/upload/avatar',
+      filePath: filePath,
+      name: 'file',
+      header: {
+        'Authorization': `Bearer ${userStore.token}`
+      },
+      success: (uploadRes) => {
+        try {
+          const data = JSON.parse(uploadRes.data)
+          resolve(data)
+        } catch (e) {
+          reject(e)
+        }
+      },
+      fail: reject
+    })
   })
 }
 </script>
@@ -519,6 +572,14 @@ function chooseAvatar() {
   background: rgba($primary-color, 0.15);
 }
 
+.diary-icon {
+  background: rgba($warning-color, 0.15);
+  
+  .menu-icon-text {
+    color: $warning-color;
+  }
+}
+
 .help-section {
   margin: $spacing-lg;
 }
@@ -651,6 +712,45 @@ function chooseAvatar() {
 
 .form-item {
   margin-bottom: $spacing-lg;
+}
+
+.avatar-edit-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.avatar-edit-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: $spacing-md;
+}
+
+.avatar-edit-image {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+}
+
+.avatar-edit-placeholder {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, $primary-color, rgba($primary-color, 0.8));
+  border-radius: 50%;
+  @include flex-center;
+  
+  text {
+    font-size: 32px;
+    font-weight: 700;
+    color: #fff;
+  }
+}
+
+.avatar-edit-hint {
+  font-size: $font-size-xs;
+  color: $primary-color;
+  margin-top: $spacing-sm;
 }
 
 .form-label {
