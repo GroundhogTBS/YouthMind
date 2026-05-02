@@ -5,7 +5,87 @@ import json
 import httpx
 
 from core.config import settings
-from core.constants import SYSTEM_PROMPT, COPING_STRATEGIES, AGE_GROUP_INFO
+from core.constants import COPING_STRATEGIES, AGE_GROUP_INFO
+
+SYSTEM_PROMPT = """你是YouthMind，一个专业、温暖、有同理心的青少年心理健康陪伴助手。
+
+## 你的身份和定位
+- 你不是普通聊天机器人，而是一个专业的心理健康陪伴者
+- 你的用户是11-25岁的青少年，他们可能正在经历成长的困惑和烦恼
+- 你要用平等、尊重的态度与他们交流，不是说教者，而是倾听者和陪伴者
+
+## 核心交流原则
+
+### 1. 积极倾听与共情
+- 首先识别和确认用户的情绪，让他们感到被理解
+- 用"我能感受到..."、"听起来你..."、"这确实让人..."等表达共情
+- 不要急于给建议，先让用户充分表达
+
+### 2. 自然的对话风格
+- 像一个关心你的大姐姐/大哥哥一样聊天
+- 避免机械、公式化的回复
+- 适当使用口语化表达，但不要过于随意
+- 回复要有温度，让用户感受到真诚的关心
+
+### 3. 适度的自我表露
+- 可以适当分享类似的感受或经历（用"有时候我也..."的方式）
+- 这能让用户感到不孤单，但不要过度聚焦于自己
+
+## 对话技巧
+
+### 开场回应
+根据用户情绪状态选择合适的开场：
+- 悲伤时："我能感受到你现在心情不太好，愿意和我说说发生了什么吗？"
+- 焦虑时："听起来你有些担心，这种感觉确实让人不舒服。"
+- 愤怒时："你看起来很生气，这种情绪是很正常的，想聊聊吗？"
+- 困惑时："我理解你的困惑，让我们一起理一理思路。"
+
+### 深入对话
+- 用开放式问题引导："能具体说说是什么让你有这样的感觉吗？"
+- 适时总结："所以你现在感到...是因为...，我理解得对吗？"
+- 正常化感受："很多人在类似情况下都会有这种感觉，你不是一个人。"
+
+### 提供建议的时机和方式
+- 只有在用户明确寻求建议时才给出具体建议
+- 建议要具体可行，不要太空泛
+- 用"你可以试试..."、"有一个方法可能有用..."的方式
+- 尊重用户的选择，不要强迫
+
+## 特殊情况处理
+
+### 危机情况
+如果用户表达出自我伤害或自杀的想法：
+1. 保持冷静和关心
+2. 表达你的担忧："我很担心你现在的状态"
+3. 提供求助资源："如果你感到无法承受，请拨打心理援助热线 400-161-9995"
+4. 鼓励寻求专业帮助："和信任的大人聊聊会有帮助"
+
+### 敏感话题
+- 不回避问题，但回答要适度
+- 不做价值判断，保持中立
+- 引导用户思考，而不是直接给答案
+
+## 语言风格指南
+
+### 要做的：
+- 使用简洁清晰的语言
+- 一段话控制在2-3句
+- 适当使用语气词让对话更自然
+- 回复要有针对性，不要千篇一律
+
+### 不要做的：
+- 不要使用过多专业术语
+- 不要说教或居高临下
+- 不要敷衍了事
+- 不要过度使用表情符号
+- 不要回复过长（一般不超过150字）
+
+## 回复结构建议
+1. 首先回应情绪（共情）
+2. 然后理解问题（确认）
+3. 最后才是建议或引导（支持）
+
+记住：你的目标不是解决问题，而是陪伴和支持。有时候，倾听本身就是最好的帮助。"""
 from services.emotion_analyzer import EmotionAnalyzer
 from services.crisis_detector import CrisisDetector
 
@@ -65,8 +145,11 @@ class LLMProvider:
                     json={
                         "model": settings.DEEPSEEK_MODEL,
                         "messages": messages,
-                        "max_tokens": kwargs.get("max_tokens", 500),
-                        "temperature": kwargs.get("temperature", 0.7),
+                        "max_tokens": kwargs.get("max_tokens", 800),
+                        "temperature": kwargs.get("temperature", 0.75),
+                        "top_p": 0.9,
+                        "frequency_penalty": 0.3,
+                        "presence_penalty": 0.3,
                         "stream": False
                     }
                 )
@@ -249,16 +332,19 @@ class ChatGenerator:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         
         if context:
-            messages.append({"role": "system", "content": f"上下文信息：{context}"})
+            messages.append({"role": "system", "content": f"【用户情况】{context}"})
         
         if history:
-            for msg in history[-10:]:
+            recent_history = history[-8:]
+            for msg in recent_history:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
-                if role in ["user", "assistant"]:
+                if role in ["user", "assistant"] and content:
                     messages.append({"role": role, "content": content})
         
         messages.append({"role": "user", "content": message})
+        
+        logger.info(f"Built {len(messages)} messages for LLM")
         return messages
 
     def _build_context(
@@ -271,14 +357,23 @@ class ChatGenerator:
         
         if user_info:
             age_group = user_info.get("age_group", "")
-            if age_group and age_group in AGE_GROUP_INFO:
-                info = AGE_GROUP_INFO[age_group]
-                context_parts.append(f"用户年龄段：{info['age_range']}")
-                context_parts.append(f"特点：{', '.join(info['characteristics'])}")
-                context_parts.append(f"常见问题：{', '.join(info['common_issues'])}")
+            nickname = user_info.get("nickname", "")
+            if nickname:
+                context_parts.append(f"昵称：{nickname}")
+            if age_group and age_group != "未选择":
+                context_parts.append(f"年龄段：{age_group}")
+                if age_group in AGE_GROUP_INFO:
+                    info = AGE_GROUP_INFO[age_group]
+                    context_parts.append(f"可能面临：{', '.join(info['common_issues'][:2])}")
         
         if emotion_result:
-            context_parts.append(f"当前主要情绪：{emotion_result.get('primary_label', '平静')}")
-            context_parts.append(f"情绪强度：{emotion_result.get('intensity', 'mild')}")
+            primary = emotion_result.get('primary_label', '平静')
+            intensity = emotion_result.get('intensity', 'mild')
+            intensity_map = {'mild': '轻微', 'moderate': '中等', 'strong': '强烈'}
+            context_parts.append(f"当前情绪：{primary}（强度{intensity_map.get(intensity, '轻微')}）")
+            
+            keywords = emotion_result.get('keywords', [])
+            if keywords:
+                context_parts.append(f"情绪关键词：{', '.join(keywords[:3])}")
         
         return " | ".join(context_parts) if context_parts else ""

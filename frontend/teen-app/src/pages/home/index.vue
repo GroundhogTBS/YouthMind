@@ -97,6 +97,78 @@
         
         <view class="section">
           <view class="section-header">
+            <text class="section-title">我的日记</text>
+            <text class="section-more" @click="goToDiary">查看全部</text>
+          </view>
+          <view class="diary-list" v-if="recentDiaries.length > 0">
+            <view class="diary-card" v-for="diary in recentDiaries" :key="diary.id" @click="viewDiary(diary)">
+              <view class="diary-header">
+                <text class="diary-date">{{ formatDate(diary.createdAt) }}</text>
+                <view v-if="diary.mood" class="diary-mood" :style="{ background: getMoodColor(diary.mood) }">
+                  <text>{{ getMoodIcon(diary.mood) }}</text>
+                </view>
+              </view>
+              <text class="diary-title" v-if="diary.title">{{ diary.title }}</text>
+              <text class="diary-preview">{{ truncate(diary.content, 60) }}</text>
+              <view class="diary-stats">
+                <text class="word-count">{{ diary.content.length }}字</text>
+              </view>
+            </view>
+          </view>
+          <view class="empty-diary" v-else @click="goToDiary">
+            <text class="empty-text">还没有日记</text>
+            <text class="empty-action">点击开始记录 →</text>
+          </view>
+        </view>
+        
+        <view class="section">
+          <view class="section-header">
+            <text class="section-title">情绪趋势</text>
+            <text class="section-more" @click="goToEmotion">详细分析</text>
+          </view>
+          <view class="emotion-chart-card">
+            <view class="chart-container">
+              <view class="chart-y-axis">
+                <text v-for="i in [10, 7, 5, 2, 0]" :key="i" class="y-label">{{ i }}</text>
+              </view>
+              <view class="chart-area">
+                <view class="chart-grid">
+                  <view v-for="i in 5" :key="i" class="grid-line"></view>
+                </view>
+                <view class="chart-curve">
+                  <view 
+                    v-for="(point, index) in emotionPoints" 
+                    :key="index" 
+                    class="curve-point"
+                    :style="{ 
+                      left: (index * 100 / (emotionPoints.length - 1)) + '%',
+                      bottom: (point.intensity * 10) + '%'
+                    }"
+                  >
+                    <view class="point-dot" :style="{ background: point.color }"></view>
+                    <text class="point-label">{{ point.label }}</text>
+                  </view>
+                </view>
+                <svg class="curve-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <polyline 
+                    :points="curvePoints" 
+                    fill="none" 
+                    stroke="#6366f1" 
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </view>
+              <view class="chart-x-axis">
+                <text v-for="day in emotionDays" :key="day" class="x-label">{{ day }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+        
+        <view class="section">
+          <view class="section-header">
             <text class="section-title">推荐阅读</text>
             <text class="section-more" @click="goToResource">查看更多</text>
           </view>
@@ -127,17 +199,27 @@
 import { computed, ref, onMounted } from 'vue'
 import { useNavStore } from '@/stores/nav'
 import { useUserStore } from '@/stores/user'
+import { api } from '@/api/request'
 
 const navStore = useNavStore()
 const userStore = useUserStore()
 
-onMounted(() => {
+const recentDiaries = ref<any[]>([])
+const emotionPoints = ref<any[]>([])
+
+onMounted(async () => {
   navStore.resetToHome()
   userStore.checkLogin()
   
   if (!userStore.isLoggedIn) {
     uni.redirectTo({ url: '/pages/auth/login' })
+    return
   }
+  
+  await Promise.all([
+    loadRecentDiaries(),
+    loadEmotionTrend()
+  ])
 })
 
 const nickname = computed(() => userStore.userInfo?.nickname || '朋友')
@@ -151,11 +233,108 @@ const greetingText = computed(() => {
   return '晚上好'
 })
 
+const emotionDays = computed(() => {
+  const days = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    days.push(`${d.getMonth() + 1}/${d.getDate()}`)
+  }
+  return days
+})
+
+const curvePoints = computed(() => {
+  if (emotionPoints.value.length === 0) return '0,100 100,100'
+  return emotionPoints.value.map((p, i) => {
+    const x = i * 100 / (emotionPoints.value.length - 1)
+    const y = 100 - p.intensity * 10
+    return `${x},${y}`
+  }).join(' ')
+})
+
 const articles = ref([
   { category: '情绪', title: '如何应对考试焦虑', summary: '考试前的紧张是正常的，学会这些方法让你轻松应对' },
   { category: '人际', title: '和朋友吵架了怎么办', summary: '友谊中的冲突可以这样化解，让关系更紧密' },
   { category: '成长', title: '提升自信心的方法', summary: '相信自己，你比想象中更优秀' }
 ])
+
+async function loadRecentDiaries() {
+  try {
+    const data = await api.diary.getList(3)
+    recentDiaries.value = data || []
+  } catch (e) {
+    console.error('加载日记失败', e)
+  }
+}
+
+async function loadEmotionTrend() {
+  try {
+    const data = await api.emotionRecord.getTrend(7)
+    const points: any[] = []
+    const trend = data.daily_trend || []
+    
+    for (let i = 0; i < 7; i++) {
+      const d = new Date()
+      d.setDate(d.getDate() - (6 - i))
+      const dateStr = d.toISOString().split('T')[0]
+      const dayData = trend.find((t: any) => t.date === dateStr)
+      
+      if (dayData && dayData.emotions && dayData.emotions.length > 0) {
+        const topEmotion = dayData.emotions.reduce((a: any, b: any) => a.intensity > b.intensity ? a : b)
+        points.push({
+          intensity: topEmotion.intensity,
+          label: getEmotionLabel(topEmotion.type),
+          color: getEmotionColor(topEmotion.type)
+        })
+      } else {
+        points.push({ intensity: 5, label: '平静', color: '#3b82f6' })
+      }
+    }
+    
+    emotionPoints.value = points
+  } catch (e) {
+    console.error('加载情绪趋势失败', e)
+    emotionPoints.value = Array(7).fill({ intensity: 5, label: '平静', color: '#3b82f6' })
+  }
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  return `${d.getMonth() + 1}月${d.getDate()}日`
+}
+
+function truncate(text: string, length: number): string {
+  if (!text) return ''
+  return text.length > length ? text.substring(0, length) + '...' : text
+}
+
+function getMoodIcon(type: string): string {
+  const icons: Record<string, string> = {
+    happy: '😊', calm: '😌', sad: '😢', anxious: '😰',
+    angry: '😠', tired: '😴', confused: '🤔', lonely: '😔'
+  }
+  return icons[type] || '😐'
+}
+
+function getMoodColor(type: string): string {
+  const colors: Record<string, string> = {
+    happy: '#22c55e', calm: '#3b82f6', sad: '#6366f1', anxious: '#f59e0b',
+    angry: '#ef4444', tired: '#8b5cf6', confused: '#ec4899', lonely: '#64748b'
+  }
+  return colors[type] || '#6366f1'
+}
+
+function getEmotionLabel(type: string): string {
+  const labels: Record<string, string> = {
+    happy: '开心', calm: '平静', sad: '难过', anxious: '焦虑',
+    angry: '生气', tired: '疲惫', confused: '困惑', lonely: '孤独'
+  }
+  return labels[type] || '平静'
+}
+
+function getEmotionColor(type: string): string {
+  return getMoodColor(type)
+}
 
 function stayHome() {
   navStore.setPage('home')
@@ -182,6 +361,14 @@ function goToProfile() {
 
 function goToEmotion() {
   uni.navigateTo({ url: '/pages/emotion/index' })
+}
+
+function goToDiary() {
+  uni.navigateTo({ url: '/pages/diary/index' })
+}
+
+function viewDiary(diary: any) {
+  uni.navigateTo({ url: `/pages/diary/index?id=${diary.id}` })
 }
 
 function selectMood(mood: string) {
@@ -553,8 +740,197 @@ function selectMood(mood: string) {
   line-height: 1.5;
 }
 
+.diary-list {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 -8px;
+}
+
+.diary-card {
+  width: calc(33.33% - 16px);
+  margin: 0 8px 16px;
+  background: $bg-primary;
+  border-radius: 10px;
+  padding: 16px;
+  border: 1px solid $border-light;
+  @include card-hover;
+}
+
+.diary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.diary-date {
+  font-size: 12px;
+  color: $text-muted;
+}
+
+.diary-mood {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  @include flex-center;
+  
+  text {
+    font-size: 12px;
+  }
+}
+
+.diary-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: $text-primary;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.diary-preview {
+  font-size: 12px;
+  color: $text-secondary;
+  line-height: 1.5;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.diary-stats {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.word-count {
+  font-size: 11px;
+  color: $primary-color;
+  background: rgba($primary-color, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.empty-diary {
+  background: $bg-primary;
+  border-radius: 10px;
+  padding: 32px;
+  border: 1px dashed $border-light;
+  text-align: center;
+  @include clickable;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: $text-muted;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.empty-action {
+  font-size: 13px;
+  color: $primary-color;
+}
+
+.emotion-chart-card {
+  background: $bg-primary;
+  border-radius: 10px;
+  padding: 20px;
+  border: 1px solid $border-light;
+}
+
+.chart-container {
+  display: flex;
+  height: 120px;
+}
+
+.chart-y-axis {
+  width: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-right: 8px;
+}
+
+.y-label {
+  font-size: 10px;
+  color: $text-light;
+  text-align: right;
+}
+
+.chart-area {
+  flex: 1;
+  position: relative;
+}
+
+.chart-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.grid-line {
+  height: 1px;
+  background: $border-light;
+}
+
+.chart-curve {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.curve-point {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  z-index: 2;
+}
+
+.point-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.point-label {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: $text-muted;
+  white-space: nowrap;
+}
+
+.curve-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.chart-x-axis {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 8px;
+  margin-left: 24px;
+}
+
+.x-label {
+  font-size: 10px;
+  color: $text-light;
+}
+
 @media screen and (max-width: 1200px) {
-  .article-card {
+  .article-card, .diary-card {
     width: calc(50% - 16px);
   }
 }

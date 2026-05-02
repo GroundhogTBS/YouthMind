@@ -185,12 +185,33 @@ async def get_diary_stats(
 ):
     start_date = datetime.now() - timedelta(days=days)
     
-    total = db.query(DiaryModel).filter(
+    diaries = db.query(DiaryModel).filter(
         DiaryModel.user_id == user.id,
         DiaryModel.created_at >= start_date
-    ).count()
+    ).all()
+    
+    total = len(diaries)
+    total_words = sum(len(d.content) for d in diaries)
+    avg_words = total_words / total if total > 0 else 0
+    
+    mood_counts = {}
+    for d in diaries:
+        if d.mood:
+            mood_counts[d.mood] = mood_counts.get(d.mood, 0) + 1
+    
+    most_common_mood = max(mood_counts.items(), key=lambda x: x[1])[0] if mood_counts else None
+    
+    daily_words = {}
+    for d in diaries:
+        date_str = d.created_at.strftime('%Y-%m-%d')
+        daily_words[date_str] = daily_words.get(date_str, 0) + len(d.content)
     
     return {
         "period_days": days,
-        "total_diaries": total
+        "total_diaries": total,
+        "total_words": total_words,
+        "avg_words_per_diary": round(avg_words, 1),
+        "most_common_mood": most_common_mood,
+        "mood_distribution": mood_counts,
+        "daily_word_counts": daily_words
     }

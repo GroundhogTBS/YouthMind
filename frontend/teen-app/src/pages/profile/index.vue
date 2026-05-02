@@ -238,8 +238,10 @@ async function loadStats() {
 }
 
 function onAgeGroupChange(e: any) {
-  ageGroupIndex.value = e.detail.value
-  editForm.age_group = ageGroups[ageGroupIndex.value]
+  const index = parseInt(e.detail.value)
+  ageGroupIndex.value = index
+  editForm.age_group = ageGroups[index]
+  console.log('年龄段选择:', index, editForm.age_group)
 }
 
 async function saveProfile() {
