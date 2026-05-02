@@ -5,7 +5,7 @@ import os
 
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
-    DEBUG: bool = True
+    DEBUG: bool = False
     PORT: int = 9000
     
     CORS_ORIGINS: List[str] = ["*"]
@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/ai-service.log"
+    
+    ADMIN_PHONES: List[str] = ["admin", "13800138000"]
     
     class Config:
         env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")

@@ -238,3 +238,100 @@ async def get_user_favorites(
             ))
     
     return articles
+
+
+class ArticleCreateRequest(BaseModel):
+    title: str
+    category: str
+    summary: Optional[str] = None
+    content: str
+    cover_image: Optional[str] = None
+    is_published: bool = False
+
+
+class ArticleUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+    summary: Optional[str] = None
+    content: Optional[str] = None
+    cover_image: Optional[str] = None
+    is_published: Optional[bool] = None
+
+
+@router.post("", summary="创建文章")
+async def create_article(
+    data: ArticleCreateRequest,
+    db: Session = Depends(get_db)
+):
+    article = ArticleModel(
+        title=data.title,
+        category=data.category,
+        summary=data.summary or "",
+        content=data.content,
+        cover_image=data.cover_image,
+        view_count=0,
+        is_published=data.is_published,
+        created_at=datetime.now()
+    )
+    db.add(article)
+    db.commit()
+    db.refresh(article)
+    
+    return {
+        "id": article.id,
+        "title": article.title,
+        "category": article.category,
+        "is_published": article.is_published,
+        "created_at": article.created_at.isoformat()
+    }
+
+
+@router.put("/{article_id}", summary="更新文章")
+async def update_article(
+    article_id: int,
+    data: ArticleUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    article = db.query(ArticleModel).filter(ArticleModel.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    
+    if data.title is not None:
+        article.title = data.title
+    if data.category is not None:
+        article.category = data.category
+    if data.summary is not None:
+        article.summary = data.summary
+    if data.content is not None:
+        article.content = data.content
+    if data.cover_image is not None:
+        article.cover_image = data.cover_image
+    if data.is_published is not None:
+        article.is_published = data.is_published
+    
+    article.updated_at = datetime.now()
+    db.commit()
+    
+    return {
+        "id": article.id,
+        "title": article.title,
+        "category": article.category,
+        "is_published": article.is_published,
+        "updated_at": article.updated_at.isoformat()
+    }
+
+
+@router.delete("/{article_id}", summary="删除文章")
+async def delete_article(
+    article_id: int,
+    db: Session = Depends(get_db)
+):
+    article = db.query(ArticleModel).filter(ArticleModel.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    
+    db.query(UserFavoriteModel).filter(UserFavoriteModel.article_id == article_id).delete()
+    db.delete(article)
+    db.commit()
+    
+    return {"success": True, "message": "文章已删除"}

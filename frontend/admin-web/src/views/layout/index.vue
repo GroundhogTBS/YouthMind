@@ -2,8 +2,8 @@
   <el-container class="layout-container">
     <el-aside :width="isCollapse ? '64px' : '220px'" class="layout-aside">
       <div class="logo">
-        <img src="/vite.svg" alt="Logo" />
-        <span v-show="!isCollapse">YouthMind</span>
+        <span v-show="!isCollapse">YM</span>
+        <span v-show="isCollapse">Y</span>
       </div>
       
       <el-menu

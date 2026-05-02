@@ -14,6 +14,7 @@ from models.database import (
 )
 from routers.user import get_current_user, UserModel as UserSchema
 from services.operation_log import operation_log_service
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -91,7 +92,7 @@ class OperationLogResponse(BaseModel):
 
 
 async def require_admin(user: UserSchema = Depends(get_current_user)):
-    if user.phone not in ["admin", "13800138000"]:
+    if user.phone not in settings.ADMIN_PHONES:
         raise HTTPException(status_code=403, detail="需要管理员权限")
     return user
 

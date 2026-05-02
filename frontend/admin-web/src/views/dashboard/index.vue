@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard-page">
+  <div class="dashboard-page" v-loading="loading">
     <el-row :gutter="20">
       <el-col :span="6">
         <el-card class="stat-card">
@@ -8,7 +8,7 @@
               <el-icon><User /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ stats.totalUsers }}</div>
+              <div class="stat-value">{{ stats.total_users }}</div>
               <div class="stat-label">注册用户</div>
             </div>
           </div>
@@ -22,7 +22,7 @@
               <el-icon><ChatDotRound /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ stats.totalSessions }}</div>
+              <div class="stat-value">{{ stats.total_sessions }}</div>
               <div class="stat-label">对话会话</div>
             </div>
           </div>
@@ -36,7 +36,7 @@
               <el-icon><Bell /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ stats.pendingAlerts }}</div>
+              <div class="stat-value">{{ stats.unhandled_crisis }}</div>
               <div class="stat-label">待处理预警</div>
             </div>
           </div>
@@ -50,7 +50,7 @@
               <el-icon><Calendar /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ stats.todayActive }}</div>
+              <div class="stat-value">{{ stats.active_users_today }}</div>
               <div class="stat-label">今日活跃</div>
             </div>
           </div>
@@ -62,7 +62,7 @@
       <el-col :span="16">
         <el-card>
           <template #header>
-            <span>预警趋势</span>
+            <span>消息趋势</span>
           </template>
           <div class="chart-container" ref="trendChartRef"></div>
         </el-card>
@@ -71,9 +71,9 @@
       <el-col :span="8">
         <el-card>
           <template #header>
-            <span>预警等级分布</span>
+            <span>情绪分布</span>
           </template>
-          <div class="chart-container" ref="levelChartRef"></div>
+          <div class="chart-container" ref="emotionChartRef"></div>
         </el-card>
       </el-col>
     </el-row>
@@ -89,21 +89,25 @@
           </template>
           <el-table :data="recentAlerts" style="width: 100%">
             <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="userId" label="用户ID" width="100" />
-            <el-table-column prop="alertLevel" label="等级" width="100">
+            <el-table-column prop="user_id" label="用户ID" width="100" />
+            <el-table-column prop="risk_level" label="等级" width="100">
               <template #default="{ row }">
-                <el-tag :type="getLevelType(row.alertLevel)">
-                  {{ getLevelText(row.alertLevel) }}
+                <el-tag :type="getLevelType(row.risk_level)">
+                  {{ getLevelText(row.risk_level) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="alertType" label="类型" />
-            <el-table-column prop="triggerSource" label="来源" width="100" />
-            <el-table-column prop="createdAt" label="时间" width="180" />
-            <el-table-column prop="status" label="状态" width="100">
+            <el-table-column prop="risk_score" label="风险分" width="80" />
+            <el-table-column prop="matched_keywords" label="关键词" show-overflow-tooltip />
+            <el-table-column prop="created_at" label="时间" width="180">
               <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)">
-                  {{ getStatusText(row.status) }}
+                {{ formatTime(row.created_at) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="handled" label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.handled ? 'success' : 'warning'">
+                  {{ row.handled ? '已处理' : '待处理' }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -123,24 +127,26 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
+import { api } from '@/api/request'
 
 const router = useRouter()
 
 const trendChartRef = ref<HTMLElement>()
-const levelChartRef = ref<HTMLElement>()
+const emotionChartRef = ref<HTMLElement>()
+const loading = ref(false)
 
 const stats = ref({
-  totalUsers: 1234,
-  totalSessions: 5678,
-  pendingAlerts: 12,
-  todayActive: 89,
+  total_users: 0,
+  total_sessions: 0,
+  unhandled_crisis: 0,
+  active_users_today: 0,
+  total_messages: 0,
+  crisis_events_count: 0,
 })
 
-const recentAlerts = ref([
-  { id: 1, userId: 101, alertLevel: 'red', alertType: 'crisis_intervention', triggerSource: 'chat', createdAt: '2024-01-15 10:30:00', status: 'pending' },
-  { id: 2, userId: 205, alertLevel: 'orange', alertType: 'high_risk_warning', triggerSource: 'assessment', createdAt: '2024-01-15 09:45:00', status: 'processing' },
-  { id: 3, userId: 308, alertLevel: 'yellow', alertType: 'attention_needed', triggerSource: 'emotion', createdAt: '2024-01-15 08:20:00', status: 'resolved' },
-])
+const recentAlerts = ref<any[]>([])
+const messageTrend = ref<any[]>([])
+const emotionDistribution = ref<Record<string, number>>({})
 
 function getLevelType(level: string) {
   const types: Record<string, string> = { red: 'danger', orange: 'warning', yellow: 'info' }
@@ -152,14 +158,9 @@ function getLevelText(level: string) {
   return texts[level] || level
 }
 
-function getStatusType(status: string) {
-  const types: Record<string, string> = { pending: 'warning', processing: 'primary', resolved: 'success', false_positive: 'info' }
-  return types[status] || 'info'
-}
-
-function getStatusText(status: string) {
-  const texts: Record<string, string> = { pending: '待处理', processing: '处理中', resolved: '已解决', false_positive: '误报' }
-  return texts[status] || status
+function formatTime(time: string) {
+  if (!time) return ''
+  return time.replace('T', ' ').substring(0, 19)
 }
 
 function goToAlerts() {
@@ -170,37 +171,82 @@ function viewAlert(id: number) {
   router.push(`/alerts/${id}`)
 }
 
-onMounted(() => {
-  if (trendChartRef.value) {
+async function loadDashboard() {
+  loading.value = true
+  try {
+    const data = await api.admin.getDashboard()
+    stats.value = data.stats
+    messageTrend.value = data.message_trend || []
+    emotionDistribution.value = data.emotion_distribution || {}
+    recentAlerts.value = (data.crisis_trend || []).slice(0, 5)
+  } catch (e) {
+    console.error('加载仪表盘失败', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadAlerts() {
+  try {
+    const data = await api.admin.getCrisisEvents('unhandled', '', 1, 5)
+    recentAlerts.value = data
+  } catch (e) {
+    console.error('加载预警失败', e)
+  }
+}
+
+function initCharts() {
+  if (trendChartRef.value && messageTrend.value.length > 0) {
     const chart = echarts.init(trendChartRef.value)
     chart.setOption({
       tooltip: { trigger: 'axis' },
-      legend: { data: ['红色', '橙色', '黄色'] },
-      xAxis: { type: 'category', data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] },
+      xAxis: { 
+        type: 'category', 
+        data: messageTrend.value.map(d => d.date.substring(5)) 
+      },
       yAxis: { type: 'value' },
       series: [
-        { name: '红色', type: 'line', data: [2, 1, 3, 2, 1, 0, 1], itemStyle: { color: '#f56c6c' } },
-        { name: '橙色', type: 'line', data: [5, 4, 6, 3, 4, 2, 3], itemStyle: { color: '#e6a23c' } },
-        { name: '黄色', type: 'line', data: [12, 15, 10, 8, 14, 9, 11], itemStyle: { color: '#909399' } },
+        { 
+          name: '消息数', 
+          type: 'line', 
+          data: messageTrend.value.map(d => d.count),
+          smooth: true,
+          itemStyle: { color: '#6C5CE7' },
+          areaStyle: { color: 'rgba(108, 92, 231, 0.1)' }
+        },
       ],
     })
   }
   
-  if (levelChartRef.value) {
-    const chart = echarts.init(levelChartRef.value)
+  if (emotionChartRef.value && Object.keys(emotionDistribution.value).length > 0) {
+    const chart = echarts.init(emotionChartRef.value)
+    const emotionLabels: Record<string, string> = {
+      happy: '开心', sad: '难过', anxious: '焦虑', angry: '生气',
+      fear: '恐惧', lonely: '孤独', confused: '迷茫', inferior: '自卑', neutral: '平静'
+    }
+    const colors: Record<string, string> = {
+      happy: '#22c55e', sad: '#6366f1', anxious: '#f59e0b', angry: '#ef4444',
+      fear: '#8b5cf6', lonely: '#64748b', confused: '#ec4899', inferior: '#0ea5e9', neutral: '#3b82f6'
+    }
     chart.setOption({
       tooltip: { trigger: 'item' },
       series: [{
         type: 'pie',
         radius: ['40%', '70%'],
-        data: [
-          { value: 5, name: '红色', itemStyle: { color: '#f56c6c' } },
-          { value: 15, name: '橙色', itemStyle: { color: '#e6a23c' } },
-          { value: 45, name: '黄色', itemStyle: { color: '#909399' } },
-        ],
+        data: Object.entries(emotionDistribution.value).map(([key, value]) => ({
+          value,
+          name: emotionLabels[key] || key,
+          itemStyle: { color: colors[key] || '#909399' }
+        })),
       }],
     })
   }
+}
+
+onMounted(async () => {
+  await loadDashboard()
+  await loadAlerts()
+  initCharts()
 })
 </script>
 

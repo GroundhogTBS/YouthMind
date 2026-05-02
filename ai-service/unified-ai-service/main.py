@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi_offline import FastAPIOffline
+from fastapi.openapi.utils import get_openapi
 import logging
 import sys
 import os
@@ -17,13 +19,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
+app = FastAPIOffline(
     title="YouthMind AI Service",
     description="青少年心理健康AI服务平台",
     version="1.2.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="YouthMind AI Service",
+        version="1.2.0",
+        description="青少年心理健康AI服务平台",
+        routes=app.routes,
+    )
+    openapi_schema["openapi"] = "3.0.3"
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 app.add_middleware(
     CORSMiddleware,

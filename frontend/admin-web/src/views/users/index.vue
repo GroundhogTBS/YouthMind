@@ -9,14 +9,6 @@
         <el-form-item label="关键词">
           <el-input v-model="filters.keyword" placeholder="手机号/昵称" clearable />
         </el-form-item>
-        <el-form-item label="风险等级">
-          <el-select v-model="filters.riskLevel" placeholder="全部" clearable>
-            <el-option label="红色" value="red" />
-            <el-option label="橙色" value="orange" />
-            <el-option label="黄色" value="yellow" />
-            <el-option label="绿色" value="green" />
-          </el-select>
-        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">搜索</el-button>
           <el-button @click="resetFilters">重置</el-button>
@@ -27,20 +19,24 @@
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="phone" label="手机号" width="130" />
         <el-table-column prop="nickname" label="昵称" />
-        <el-table-column prop="riskLevel" label="风险等级" width="100">
+        <el-table-column prop="age_group" label="年龄段" width="100" />
+        <el-table-column prop="session_count" label="会话数" width="80" />
+        <el-table-column prop="message_count" label="消息数" width="80" />
+        <el-table-column prop="risk_level" label="风险等级" width="100">
           <template #default="{ row }">
-            <el-tag :type="getRiskType(row.riskLevel)">
-              {{ getRiskText(row.riskLevel) }}
+            <el-tag :type="getRiskType(row.risk_level)">
+              {{ getRiskText(row.risk_level) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="lastLoginAt" label="最后登录" width="180" />
-        <el-table-column prop="createdAt" label="注册时间" width="180" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="last_active" label="最后活跃" width="180">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'danger'">
-              {{ row.status === 'active' ? '正常' : '禁用' }}
-            </el-tag>
+            {{ formatTime(row.last_active) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="注册时间" width="180">
+          <template #default="{ row }">
+            {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
@@ -68,13 +64,14 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { api } from '@/api/request'
 
 const router = useRouter()
 const loading = ref(false)
 
 const filters = reactive({
   keyword: '',
-  riskLevel: '',
 })
 
 const pagination = reactive({
@@ -83,27 +80,32 @@ const pagination = reactive({
   total: 0,
 })
 
-const userList = ref([
-  { id: 1, phone: '138****1234', nickname: '小明', riskLevel: 'green', lastLoginAt: '2024-01-15 10:30:00', createdAt: '2024-01-01 09:00:00', status: 'active' },
-  { id: 2, phone: '139****5678', nickname: '小红', riskLevel: 'yellow', lastLoginAt: '2024-01-15 09:45:00', createdAt: '2024-01-02 14:30:00', status: 'active' },
-  { id: 3, phone: '137****9012', nickname: '小华', riskLevel: 'orange', lastLoginAt: '2024-01-14 16:20:00', createdAt: '2024-01-03 11:15:00', status: 'active' },
-])
+const userList = ref<any[]>([])
 
 function getRiskType(level: string) {
-  const types: Record<string, string> = { red: 'danger', orange: 'warning', yellow: 'info', green: 'success' }
+  const types: Record<string, string> = { high: 'danger', medium: 'warning', low: 'success' }
   return types[level] || 'info'
 }
 
 function getRiskText(level: string) {
-  const texts: Record<string, string> = { red: '红色', orange: '橙色', yellow: '黄色', green: '绿色' }
+  const texts: Record<string, string> = { high: '高风险', medium: '中风险', low: '低风险' }
   return texts[level] || level
+}
+
+function formatTime(time: string) {
+  if (!time) return ''
+  return time.replace('T', ' ').substring(0, 19)
 }
 
 async function fetchList() {
   loading.value = true
   try {
-    // TODO: 调用API
-    pagination.total = 100
+    const data = await api.admin.getUsers(pagination.page, pagination.pageSize, filters.keyword)
+    userList.value = data
+    pagination.total = data.length
+  } catch (e) {
+    console.error('加载用户列表失败', e)
+    ElMessage.error('加载用户列表失败')
   } finally {
     loading.value = false
   }
@@ -116,15 +118,14 @@ function handleSearch() {
 
 function resetFilters() {
   filters.keyword = ''
-  filters.riskLevel = ''
   handleSearch()
 }
 
-function viewUser(id: number) {
+function viewUser(id: string) {
   router.push(`/users/${id}`)
 }
 
-function viewUserAlerts(id: number) {
+function viewUserAlerts(id: string) {
   router.push({ path: '/alerts', query: { userId: id } })
 }
 

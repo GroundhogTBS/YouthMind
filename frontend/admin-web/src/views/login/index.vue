@@ -13,17 +13,6 @@
             placeholder="请输入手机号"
             prefix-icon="User"
             size="large"
-          />
-        </el-form-item>
-        
-        <el-form-item prop="password">
-          <el-input
-            v-model="form.password"
-            type="password"
-            placeholder="请输入密码"
-            prefix-icon="Lock"
-            size="large"
-            show-password
             @keyup.enter="handleLogin"
           />
         </el-form-item>
@@ -40,6 +29,10 @@
           </el-button>
         </el-form-item>
       </el-form>
+      
+      <div class="login-tip">
+        <p>测试账号：13800138000</p>
+      </div>
     </div>
   </div>
 </template>
@@ -49,6 +42,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { api } from '@/api/request'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -56,17 +50,12 @@ const loading = ref(false)
 
 const form = reactive({
   phone: '',
-  password: '',
 })
 
 const rules: FormRules = {
   phone: [
     { required: true, message: '请输入手机号', trigger: 'blur' },
-    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' },
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
+    { len: 11, message: '手机号必须是11位', trigger: 'blur' },
   ],
 }
 
@@ -77,18 +66,17 @@ async function handleLogin() {
   loading.value = true
   
   try {
-    // TODO: 调用登录API
-    if (form.phone === '13800000000' && form.password === '123456') {
-      localStorage.setItem('admin_token', 'mock_token')
-      localStorage.setItem('admin_user', JSON.stringify({
-        id: 1,
-        nickname: '管理员',
-        phone: form.phone,
-      }))
+    const res = await api.auth.login(form.phone, '')
+    
+    if (res.access_token) {
+      localStorage.setItem('admin_token', res.access_token)
+      if (res.user) {
+        localStorage.setItem('admin_user', JSON.stringify(res.user))
+      }
       ElMessage.success('登录成功')
       router.push('/')
     } else {
-      ElMessage.error('手机号或密码错误')
+      ElMessage.error('登录失败，请重试')
     }
   } catch (error: any) {
     ElMessage.error(error.message || '登录失败')
@@ -140,5 +128,11 @@ async function handleLogin() {
 
 .login-btn {
   width: 100%;
+}
+
+.login-tip {
+  text-align: center;
+  color: #999;
+  font-size: 12px;
 }
 </style>

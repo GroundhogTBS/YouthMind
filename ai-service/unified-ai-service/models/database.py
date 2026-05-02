@@ -54,10 +54,14 @@ class CrisisEventModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String, index=True)
     user_id = Column(String, nullable=True)
+    message_id = Column(Integer, nullable=True)
     risk_level = Column(String)
     risk_score = Column(Integer)
     matched_keywords = Column(Text)
     handled = Column(Integer, default=0)
+    handler_id = Column(String, nullable=True)
+    handled_at = Column(DateTime, nullable=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
 
 

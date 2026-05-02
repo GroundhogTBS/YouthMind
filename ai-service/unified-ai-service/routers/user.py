@@ -50,6 +50,16 @@ class UserStatsResponse(BaseModel):
     emotion_records: int
 
 
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: Dict[str, Any]
+
+
+class LogoutResponse(BaseModel):
+    success: bool = True
+
+
 def create_token(user_id: str) -> str:
     expire = datetime.utcnow() + timedelta(hours=settings.JWT_EXPIRATION_HOURS)
     return jwt.encode(
@@ -87,7 +97,7 @@ async def get_current_user(
     return user
 
 
-@router.post("/login", summary="用户登录")
+@router.post("/login", response_model=LoginResponse, summary="用户登录")
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     if not request.phone or len(request.phone) != 11:
         raise HTTPException(status_code=400, detail="请输入正确的手机号")
@@ -110,9 +120,10 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     
     token = create_token(user.id)
     
-    return {
-        "token": token,
-        "user": {
+    return LoginResponse(
+        access_token=token,
+        token_type="bearer",
+        user={
             "id": user.id,
             "phone": user.phone,
             "nickname": user.nickname,
@@ -121,7 +132,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             "age_group": user.age_group,
             "created_at": user.created_at.isoformat()
         }
-    }
+    )
 
 
 @router.get("/me", response_model=UserResponse, summary="获取当前用户信息")
@@ -194,6 +205,6 @@ async def get_user_stats(
     )
 
 
-@router.post("/logout", summary="退出登录")
+@router.post("/logout", response_model=LogoutResponse, summary="退出登录")
 async def logout(user: UserModel = Depends(get_current_user)):
-    return {"success": True}
+    return LogoutResponse(success=True)

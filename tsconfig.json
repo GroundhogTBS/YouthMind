@@ -1,9 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,14 +11,13 @@
     "declaration": false,
     "sourceMap": false,
     "incremental": false,
-    "baseUrl": "."
+    "noEmit": true
   },
+  "include": [],
   "exclude": [
     "node_modules",
     "dist",
     "**/node_modules/**",
-    "**/dist/**",
-    "backend/services/**",
-    "frontend/**"
+    "**/dist/**"
   ]
 }
